@@ -1,0 +1,20 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+
+# Local data
+postgres_data/
+neo4j_data/
+neo4j_logs/

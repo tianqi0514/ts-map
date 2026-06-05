@@ -1,0 +1,126 @@
+// ============================================================
+// seed.cypher  ——  本体验证种子数据 → Neo4j 建点建边
+// 用法: cypher-shell -u neo4j -p <pwd> -f seed.cypher
+// 幂等: 全部用 MERGE, 可重复执行
+// ============================================================
+
+// ---------- 约束(唯一键) ----------
+CREATE CONSTRAINT ownentity_key IF NOT EXISTS FOR (n:OwnEntity) REQUIRE n.entityId IS UNIQUE;
+CREATE CONSTRAINT counterparty_key IF NOT EXISTS FOR (n:CounterParty) REQUIRE n.taxId IS UNIQUE;
+CREATE CONSTRAINT legalrep_key IF NOT EXISTS FOR (n:LegalRep) REQUIRE n.repId IS UNIQUE;
+CREATE CONSTRAINT shareholder_key IF NOT EXISTS FOR (n:Shareholder) REQUIRE n.shId IS UNIQUE;
+CREATE CONSTRAINT signatory_key IF NOT EXISTS FOR (n:Signatory) REQUIRE n.sigId IS UNIQUE;
+CREATE CONSTRAINT qualification_key IF NOT EXISTS FOR (n:Qualification) REQUIRE n.qualId IS UNIQUE;
+CREATE CONSTRAINT contract_key IF NOT EXISTS FOR (n:Contract) REQUIRE n.contractNo IS UNIQUE;
+CREATE CONSTRAINT clause_key IF NOT EXISTS FOR (n:Clause) REQUIRE n.clauseId IS UNIQUE;
+CREATE CONSTRAINT obligation_key IF NOT EXISTS FOR (n:Obligation) REQUIRE n.obId IS UNIQUE;
+CREATE CONSTRAINT paymentterm_key IF NOT EXISTS FOR (n:PaymentTerm) REQUIRE n.ptId IS UNIQUE;
+CREATE CONSTRAINT payment_key IF NOT EXISTS FOR (n:Payment) REQUIRE n.payId IS UNIQUE;
+CREATE CONSTRAINT deliverable_key IF NOT EXISTS FOR (n:Deliverable) REQUIRE n.delId IS UNIQUE;
+CREATE CONSTRAINT milestone_key IF NOT EXISTS FOR (n:Milestone) REQUIRE n.msId IS UNIQUE;
+CREATE CONSTRAINT invoice_key IF NOT EXISTS FOR (n:Invoice) REQUIRE n.invId IS UNIQUE;
+CREATE CONSTRAINT regulation_key IF NOT EXISTS FOR (n:Regulation) REQUIRE n.regId IS UNIQUE;
+CREATE CONSTRAINT approval_key IF NOT EXISTS FOR (n:Approval) REQUIRE n.apId IS UNIQUE;
+CREATE CONSTRAINT person_key IF NOT EXISTS FOR (n:Person) REQUIRE n.name IS UNIQUE;
+CREATE CONSTRAINT policy_key IF NOT EXISTS FOR (n:CompliancePolicy) REQUIRE (n.policyId,n.version) IS NODE KEY;
+
+// ---------- 节点 ----------
+MERGE (:OwnEntity {entityId:"OE-001", name:"华东制造集团有限公司", role:"采购方"});
+MERGE (:CounterParty {taxId:"S-204", name:"深圳市XX科技有限公司", status:"正常", regCapital:1000000, paidCapital:500000, establishedDate:"2023-09-01", businessStatus:"正常", creditScore:55, regAddress:"深圳市南山区科技园路18号A座2203", bankAcctTail:"8843", registrant:"代理-粤信财税"});
+MERGE (:CounterParty {taxId:"S-118", name:"鹏达供应链有限公司", status:"正常", regCapital:2000000, paidCapital:2000000, establishedDate:"2018-04-10", businessStatus:"正常", creditScore:71});
+MERGE (:CounterParty {taxId:"S-301", name:"海岳贸易有限公司", status:"正常", regCapital:8000000, paidCapital:8000000, establishedDate:"2019-02-20", businessStatus:"正常", creditScore:78, regAddress:"深圳市南山区科技园路18号A座2201", bankAcctTail:"8841", registrant:"代理-粤信财税"});
+MERGE (:CounterParty {taxId:"HD-CTRL", name:"海岳控股（有限合伙）", status:"正常", regCapital:5000000, paidCapital:5000000, establishedDate:"2017-06-01", businessStatus:"正常", creditScore:80});
+MERGE (:CounterParty {taxId:"S-900", name:"国信达实业有限公司", status:"黑名单", regCapital:3000000, paidCapital:3000000, establishedDate:"2016-08-12", businessStatus:"异常", creditScore:22, regAddress:"深圳市福田区XX路", bankAcctTail:"1102", registrant:"自办"});
+MERGE (n:CounterParty {taxId:"鹏程投资"}) ON CREATE SET n.name="鹏程投资", n.status="正常";
+MERGE (:Person {name:"张某"});
+MERGE (:Person {name:"王某"});
+MERGE (:Person {name:"陈某"});
+MERGE (:Signatory {sigId:"SG-204", name:"李某", authDocNo:"AUTH-204", authValidTo:"2024-12-31", authStatus:"有效"});
+MERGE (:Signatory {sigId:"SG-301", name:"陈某", authDocNo:"AUTH-301", authValidTo:"2025-06-30", authStatus:"有效"});
+MERGE (:Qualification {qualId:"QL-204", qualType:"增值电信业务许可证", validTo:"2026-08-31", status:"有效"});
+MERGE (:Qualification {qualId:"QL-301", qualType:"进出口经营许可", validTo:"2027-01-31", status:"有效"});
+MERGE (:Contract {contractNo:"C-2024-001", type:"采购", amount:1200000, policyVersion:"v2", status:"审核中", signDate:"2024-06-08", involvesPII:true, counterpartyCoop:"一般", fulfillmentProgress:"预付已付,未交付"});
+MERGE (:Contract {contractNo:"C-2024-005", type:"采购", amount:600000, policyVersion:"v2", status:"审核中", signDate:"2024-06-09", involvesPII:false, counterpartyCoop:"高", fulfillmentProgress:"未开始"});
+MERGE (:Contract {contractNo:"C-2024-006", type:"采购", amount:450000, policyVersion:"v2", status:"审核中", signDate:"2024-06-10", involvesPII:true, counterpartyCoop:"低", fulfillmentProgress:"未开始"});
+MERGE (:Contract {contractNo:"C-2024-007", type:"采购", amount:2500000, policyVersion:"v2", status:"审核中", signDate:"2024-06-12", involvesPII:true, counterpartyCoop:"未知", fulfillmentProgress:"未签署"});
+MERGE (:Contract {contractNo:"C-2023-088", type:"采购", amount:800000, policyVersion:"v1", status:"已生效", signDate:"2023-10-15", involvesPII:true, counterpartyCoop:"一般", fulfillmentProgress:"已履约完成"});
+MERGE (:Clause {clauseId:"C-2024-001#01", clauseType:"付款", mandatory:true, text:"买方应于合同签署后支付合同总额的90%作为预付款，余款10%于全部货物验收合格后30日内支付。"});
+MERGE (:Clause {clauseId:"C-2024-001#02", clauseType:"质量", mandatory:true, text:"卖方保证货物符合行业通用标准。"});
+MERGE (:Clause {clauseId:"C-2024-001#03", clauseType:"责任上限", mandatory:false, cap:100000, text:"卖方对本合同项下的赔偿责任以合同金额为限，且仅限于买方的直接损失；间接损失、利润损失、数据损失概不负责。"});
+MERGE (:Clause {clauseId:"C-2024-005#01", clauseType:"付款", mandatory:true});
+MERGE (:Clause {clauseId:"C-2024-005#02", clauseType:"质量", mandatory:true});
+MERGE (:Clause {clauseId:"C-2024-006#01", clauseType:"付款", mandatory:true});
+MERGE (:Clause {clauseId:"C-2024-006#02", clauseType:"质量", mandatory:true});
+MERGE (:Clause {clauseId:"C-2024-007#01", clauseType:"付款", mandatory:true, text:"买方分三期支付：预付30%、到货60%、验收10%。"});
+MERGE (:Clause {clauseId:"C-2024-007#02", clauseType:"质量", mandatory:true, text:"卖方保证全检合格率不低于99%。"});
+MERGE (:Clause {clauseId:"C-2024-007#03", clauseType:"数据合规", mandatory:true, text:"双方按《个人信息保护法》要求处理个人信息，具体安全措施另行约定。"});
+MERGE (:Clause {clauseId:"C-2023-088#01", clauseType:"付款", mandatory:true});
+MERGE (:Clause {clauseId:"C-2023-088#02", clauseType:"质量", mandatory:true});
+MERGE (:Clause {clauseId:"C-2024-001#04", clauseType:"保密", mandatory:false, text:"乙方应对知悉的商业秘密承担保密义务，保密期限至甲方认为无需保密时止。"});
+MERGE (:Obligation {obId:"OB-001", obligor:"S-204", description:"交付50台ICX-9并90天质保", dueDate:"2024-09-30", status:"未开始"});
+MERGE (:PaymentTerm {ptId:"PT-001-1", stage:"预付", ratio:0.3, amount:360000, paymentDays:30});
+MERGE (:PaymentTerm {ptId:"PT-001-2", stage:"到货", ratio:0.6, amount:720000, paymentDays:60});
+MERGE (:PaymentTerm {ptId:"PT-001-3", stage:"质保金", ratio:0.1, amount:120000, paymentDays:365});
+MERGE (:Payment {payId:"PAY-001-1", amount:360000, paidAt:"2024-06-20", status:"已付"});
+MERGE (:Deliverable {delId:"DEL-001", name:"工业控制设备", qty:50, spec:"ICX-9"});
+MERGE (:Milestone {msId:"MS-001-1", name:"到货", dueDate:"2024-09-30", status:"待开始"});
+MERGE (:Milestone {msId:"MS-001-2", name:"验收", dueDate:"2024-10-15", acceptanceCriteria:"全检合格率≥99%", status:"待开始"});
+MERGE (:Invoice {invId:"INV-001", amount:360000, type:"增值税专票", issuedAt:"2024-06-18"});
+MERGE (:CompliancePolicy {policyId:"CP-PROC", version:"v1", effectiveFrom:"2023-01-01", mandatoryClauses:"付款; 质量"});
+MERGE (:CompliancePolicy {policyId:"CP-PROC", version:"v2", effectiveFrom:"2024-06-01", mandatoryClauses:"付款; 质量; 数据合规"});
+MERGE (:Regulation {regId:"REG-PIPL", name:"个人信息保护法", jurisdiction:"CN", effectiveFrom:"2021-11-01"});
+MERGE (:Approval {apId:"AP-001", stage:"法务", decision:"待审"});
+
+// ---------- 关系 ----------
+MATCH (c:Contract{contractNo:"C-2024-001"}),(p:CounterParty{taxId:"S-204"}) MERGE (c)-[:SIGNED_BY_COUNTERPARTY]->(p);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(o:OwnEntity{entityId:"OE-001"}) MERGE (c)-[:SIGNED_BY_OWN]->(o);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(s:Signatory{sigId:"SG-204"}) MERGE (c)-[:SIGNED_BY_SIGNATORY]->(s);
+MATCH (c:Contract{contractNo:"C-2024-005"}),(p:CounterParty{taxId:"S-118"}) MERGE (c)-[:SIGNED_BY_COUNTERPARTY]->(p);
+MATCH (c:Contract{contractNo:"C-2024-005"}),(o:OwnEntity{entityId:"OE-001"}) MERGE (c)-[:SIGNED_BY_OWN]->(o);
+MATCH (c:Contract{contractNo:"C-2024-006"}),(p:CounterParty{taxId:"S-204"}) MERGE (c)-[:SIGNED_BY_COUNTERPARTY]->(p);
+MATCH (c:Contract{contractNo:"C-2024-006"}),(o:OwnEntity{entityId:"OE-001"}) MERGE (c)-[:SIGNED_BY_OWN]->(o);
+MATCH (c:Contract{contractNo:"C-2024-007"}),(p:CounterParty{taxId:"S-301"}) MERGE (c)-[:SIGNED_BY_COUNTERPARTY]->(p);
+MATCH (c:Contract{contractNo:"C-2024-007"}),(o:OwnEntity{entityId:"OE-001"}) MERGE (c)-[:SIGNED_BY_OWN]->(o);
+MATCH (c:Contract{contractNo:"C-2024-007"}),(s:Signatory{sigId:"SG-301"}) MERGE (c)-[:SIGNED_BY_SIGNATORY]->(s);
+MATCH (c:Contract{contractNo:"C-2023-088"}),(p:CounterParty{taxId:"S-204"}) MERGE (c)-[:SIGNED_BY_COUNTERPARTY]->(p);
+MATCH (c:Contract{contractNo:"C-2023-088"}),(o:OwnEntity{entityId:"OE-001"}) MERGE (c)-[:SIGNED_BY_OWN]->(o);
+MATCH (p:CounterParty{taxId:"S-204"}),(r:Person{name:"张某"}) MERGE (p)-[:HAS_LEGAL_REP {repId:"LR-204", since:"2024-03-01"}]->(r);
+MATCH (p:CounterParty{taxId:"S-118"}),(r:Person{name:"张某"}) MERGE (p)-[:HAS_LEGAL_REP {repId:"LR-118", since:"2022-01-05"}]->(r);
+MATCH (p:CounterParty{taxId:"S-301"}),(r:Person{name:"陈某"}) MERGE (p)-[:HAS_LEGAL_REP {repId:"LR-301", since:"2020-09-01"}]->(r);
+MATCH (p:CounterParty{taxId:"S-204"}),(h:Person{name:"王某"}) MERGE (p)-[:HAS_SHAREHOLDER {shId:"SH-204-1", ratio:0.7, isUBO:true}]->(h);
+MATCH (p:CounterParty{taxId:"S-204"}),(h:CounterParty{taxId:"鹏程投资"}) MERGE (p)-[:HAS_SHAREHOLDER {shId:"SH-204-2", ratio:0.3, isUBO:false}]->(h);
+MATCH (p:CounterParty{taxId:"S-301"}),(h:CounterParty{taxId:"HD-CTRL"}) MERGE (p)-[:HAS_SHAREHOLDER {shId:"SH-301-1", ratio:0.6, isUBO:false}]->(h);
+MATCH (p:CounterParty{taxId:"S-301"}),(h:Person{name:"陈某"}) MERGE (p)-[:HAS_SHAREHOLDER {shId:"SH-301-2", ratio:0.4, isUBO:false}]->(h);
+MATCH (p:CounterParty{taxId:"HD-CTRL"}),(h:Person{name:"王某"}) MERGE (p)-[:HAS_SHAREHOLDER {shId:"SH-HD-1", ratio:0.8, isUBO:true}]->(h);
+MATCH (p:CounterParty{taxId:"S-900"}),(h:Person{name:"王某"}) MERGE (p)-[:HAS_SHAREHOLDER {shId:"SH-900-1", ratio:0.9, isUBO:true}]->(h);
+MATCH (p:CounterParty{taxId:"S-204"}),(q:Qualification{qualId:"QL-204"}) MERGE (p)-[:HOLDS_QUALIFICATION]->(q);
+MATCH (p:CounterParty{taxId:"S-301"}),(q:Qualification{qualId:"QL-301"}) MERGE (p)-[:HOLDS_QUALIFICATION]->(q);
+MATCH (s:Signatory{sigId:"SG-204"}),(p:CounterParty{taxId:"S-204"}) MERGE (s)-[:REPRESENTS_PARTY]->(p);
+MATCH (s:Signatory{sigId:"SG-301"}),(p:CounterParty{taxId:"S-301"}) MERGE (s)-[:REPRESENTS_PARTY]->(p);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Clause{clauseId:"C-2024-001#01"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Clause{clauseId:"C-2024-001#02"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Clause{clauseId:"C-2024-001#03"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-005"}),(x:Clause{clauseId:"C-2024-005#01"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-005"}),(x:Clause{clauseId:"C-2024-005#02"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-006"}),(x:Clause{clauseId:"C-2024-006#01"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-006"}),(x:Clause{clauseId:"C-2024-006#02"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-007"}),(x:Clause{clauseId:"C-2024-007#01"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-007"}),(x:Clause{clauseId:"C-2024-007#02"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-007"}),(x:Clause{clauseId:"C-2024-007#03"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2023-088"}),(x:Clause{clauseId:"C-2023-088#01"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2023-088"}),(x:Clause{clauseId:"C-2023-088#02"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Clause{clauseId:"C-2024-001#04"}) MERGE (c)-[:HAS_CLAUSE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Obligation{obId:"OB-001"}) MERGE (c)-[:HAS_OBLIGATION]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:PaymentTerm{ptId:"PT-001-1"}) MERGE (c)-[:HAS_PAYMENT_TERM]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:PaymentTerm{ptId:"PT-001-2"}) MERGE (c)-[:HAS_PAYMENT_TERM]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:PaymentTerm{ptId:"PT-001-3"}) MERGE (c)-[:HAS_PAYMENT_TERM]->(x);
+MATCH (t:PaymentTerm{ptId:"PT-001-1"}),(x:Payment{payId:"PAY-001-1"}) MERGE (t)-[:SETTLED_BY]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Deliverable{delId:"DEL-001"}) MERGE (c)-[:HAS_DELIVERABLE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Milestone{msId:"MS-001-1"}) MERGE (c)-[:HAS_MILESTONE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Milestone{msId:"MS-001-2"}) MERGE (c)-[:HAS_MILESTONE]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(x:Approval{apId:"AP-001"}) MERGE (c)-[:APPROVED_VIA]->(x);
+MATCH (c:Contract{contractNo:"C-2024-001"}),(pol:CompliancePolicy{policyId:"CP-PROC", version:"v2"}) MERGE (c)-[:GOVERNED_BY_POLICY]->(pol);
+MATCH (c:Contract{contractNo:"C-2024-005"}),(pol:CompliancePolicy{policyId:"CP-PROC", version:"v2"}) MERGE (c)-[:GOVERNED_BY_POLICY]->(pol);
+MATCH (c:Contract{contractNo:"C-2024-006"}),(pol:CompliancePolicy{policyId:"CP-PROC", version:"v2"}) MERGE (c)-[:GOVERNED_BY_POLICY]->(pol);
+MATCH (c:Contract{contractNo:"C-2024-007"}),(pol:CompliancePolicy{policyId:"CP-PROC", version:"v2"}) MERGE (c)-[:GOVERNED_BY_POLICY]->(pol);
+MATCH (c:Contract{contractNo:"C-2023-088"}),(pol:CompliancePolicy{policyId:"CP-PROC", version:"v1"}) MERGE (c)-[:GOVERNED_BY_POLICY]->(pol);

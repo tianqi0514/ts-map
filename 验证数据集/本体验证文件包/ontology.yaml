@@ -1,0 +1,104 @@
+# 单合同本体库 v1.0 —— 供研发直接编译/导入
+# 结构：objects 对象 / links 关系 / rules 规则(硬+软) / constraints 约束 / behaviors 行为
+# 说明：中文 label 给业务看，键名(英文)给代码用。
+ontology:
+  version: 1.0.0
+  domain: 单合同合同审核
+
+  objects:
+    Contract:        { label: 合同, key: contractNo,
+      fields: { contractNo: string, title: string, contractType: "enum[采购|销售|服务|框架]",
+                amount: money, signDate: date, effectiveCondition: string,
+                status: "enum[草拟|审核中|已生效|已拒绝]", relatedDisclosed: bool, policyVersion: string } }
+    OwnEntity:       { label: 我方主体, key: entityId,
+      fields: { entityId: string, name: string, role: "enum[采购方|供货方]" } }
+    CounterParty:    { label: 签约主体, key: taxId,
+      fields: { taxId: string, name: string, status: "enum[正常|黑名单|战略]",
+                regCapital: money, paidCapital: money, establishedDate: date,
+                businessStatus: "enum[正常|异常|吊销|注销]", creditScore: "int(0..100)" } }
+    LegalRep:        { label: 法定代表人, key: repId, fields: { repId: string, name: string, idMasked: string, since: date } }
+    Shareholder:     { label: 股东, key: shId, fields: { shId: string, holder: string, holderType: "enum[自然人|机构]", ratio: "decimal(0..1)", isUBO: bool } }
+    Signatory:       { label: 授权签署人, key: sigId, fields: { sigId: string, name: string, authDocNo: string, authValidTo: date, authStatus: "enum[有效|过期|无授权]" } }
+    Qualification:   { label: 资质证照, key: qualId, fields: { qualId: string, qualType: string, certNo: string, validTo: date, status: "enum[有效|过期|吊销]" } }
+    Clause:          { label: 条款, key: clauseId, fields: { clauseId: string, clauseType: "enum[付款|保密|数据合规|质量|交付|责任上限|续约]", text: string, mandatory: bool } }
+    Obligation:      { label: 履约义务, key: obId, fields: { obId: string, obligor: ref, description: string, dueDate: date, status: "enum[未开始|进行中|已完成|逾期]" } }
+    PaymentTerm:     { label: 付款计划, key: ptId, fields: { ptId: string, stage: "enum[预付|到货|验收|质保金]", ratio: "decimal(0..1)", amount: money, paymentDays: int } }
+    Payment:         { label: 付款记录, key: payId, fields: { payId: string, against: ref, amount: money, paidAt: date, status: "enum[计划|已付|冻结]" } }
+    Deliverable:     { label: 交付物, key: delId, fields: { delId: string, name: string, qty: int, spec: string } }
+    Milestone:       { label: 交付里程碑, key: msId, fields: { msId: string, name: string, dueDate: date, acceptanceCriteria: string, status: "enum[待开始|已达成|逾期]" } }
+    Invoice:         { label: 发票, key: invId, fields: { invId: string, type: "enum[增值税专票|普票]", amount: money, issuedAt: date } }
+    CompliancePolicy: { label: 合规政策, key: policyId, fields: { policyId: string, version: string, effectiveFrom: date, mandatoryClauses: "enum[]", approvalMatrix: string } }
+    Regulation:      { label: 适用法规, key: regId, fields: { regId: string, name: string, jurisdiction: string, effectiveFrom: date } }
+    Approval:        { label: 审批记录, key: apId, fields: { apId: string, stage: "enum[法务|财务|业务|高管]", approver: string, decision: "enum[待审|通过|驳回]", decidedAt: date } }
+    Amendment:       { label: 变更协议, key: amId, fields: { amId: string, scope: string, version: int, status: "enum[草拟|生效]" } }
+    RiskFinding:     { label: 风险项, key: rfId, fields: { rfId: string, level: "enum[低|中|高]", type: string, target: ref, ruleType: "enum[硬|软]", evidence: "ref[]" } }
+    Attachment:      { label: 附件证据, key: atId, fields: { atId: string, docType: "enum[营业执照|授权委托书|资质证书|发票|合同正本]", uri: string, hash: string } }
+
+  links:
+    - { name: signedByCounterparty, label: 签约对方,   from: Contract,     to: CounterParty,    card: n-1 }
+    - { name: signedByOwn,          label: 签约我方,   from: Contract,     to: OwnEntity,       card: n-1 }
+    - { name: hasLegalRep,          label: 法定代表人, from: CounterParty, to: LegalRep,        card: 1-1 }
+    - { name: hasShareholder,       label: 股东,       from: CounterParty, to: Shareholder,     card: 1-n, traversable: true }  # 支持穿透
+    - { name: holdsQualification,   label: 持有资质,   from: CounterParty, to: Qualification,   card: 1-n }
+    - { name: representsParty,      label: 代表主体,   from: Signatory,    to: CounterParty,    card: n-1 }
+    - { name: signedBySignatory,    label: 由谁签署,   from: Contract,     to: Signatory,       card: n-1 }
+    - { name: hasClause,            label: 含条款,     from: Contract,     to: Clause,          card: 1-n }
+    - { name: hasObligation,        label: 含义务,     from: Contract,     to: Obligation,      card: 1-n }
+    - { name: derivedFrom,          label: 义务源条款, from: Obligation,   to: Clause,          card: n-1 }
+    - { name: hasPaymentTerm,       label: 付款计划,   from: Contract,     to: PaymentTerm,     card: 1-n }
+    - { name: settledBy,            label: 实际付款,   from: PaymentTerm,  to: Payment,         card: 1-n }
+    - { name: supportedBy,          label: 付款凭证,   from: Payment,      to: Invoice,         card: 1-1 }
+    - { name: hasDeliverable,       label: 交付物,     from: Contract,     to: Deliverable,     card: 1-n }
+    - { name: hasMilestone,         label: 里程碑,     from: Contract,     to: Milestone,       card: 1-n }
+    - { name: deliveredAt,          label: 交付落点,   from: Deliverable,  to: Milestone,       card: n-1 }
+    - { name: governedByPolicy,     label: 适用政策,   from: Contract,     to: CompliancePolicy,card: n-1 }
+    - { name: governedByReg,        label: 适用法规,   from: Contract,     to: Regulation,      card: n-n }
+    - { name: approvedVia,          label: 审批,       from: Contract,     to: Approval,        card: 1-n }
+    - { name: amendedBy,            label: 变更,       from: Contract,     to: Amendment,       card: 1-n }
+    - { name: hasRisk,              label: 风险项,     from: Contract,     to: RiskFinding,     card: 1-n }
+    - { name: referencesTarget,     label: 风险指向,   from: RiskFinding,  to: [Clause,CounterParty,PaymentTerm], card: n-n }
+    - { name: hasAttachment,        label: 附件,       from: Contract,     to: Attachment,      card: 1-n }
+
+  rules:
+    hard:
+      - { id: BlacklistVeto,              label: 主体黑名单否决,   when: "counterparty.status == 黑名单", then: Veto, priority: 200 }
+      - { id: InvalidAuthorizationVeto,   label: 授权无效否决,     when: "signatory.authStatus in [过期,无授权]", then: Veto, priority: 195 }
+      - { id: AbnormalBusinessVeto,       label: 主体非存续否决,   when: "counterparty.businessStatus in [吊销,注销]", then: Veto, priority: 190 }
+      - { id: RelatedBlacklistVeto,       label: 关联黑名单(图穿透), when: "ubo穿透(counterparty) 命中 status==黑名单 的实体", then: [RaiseRiskFinding(高), RequireHumanReview], priority: 185, needs: graph }
+      - { id: MissingMandatoryClauseVeto, label: 缺强制条款否决,   when: "policy.mandatoryClauses 中存在 c 且 not hasClause(clauseType=c)", then: [RaiseRiskFinding(高), Veto], priority: 180 }
+      - { id: MissingQualificationVeto,   label: 缺资质否决,       when: "requiredQual(contract.type) 且 not holdsQualification(status=有效)", then: Veto, priority: 175 }
+      - { id: PaymentExceedsAmountVeto,   label: 付款超额否决,     when: "sum(paymentTerm.amount) > contract.amount", then: Veto, priority: 170 }
+      - { id: ApprovalGate,               label: 未审批不得生效,   when: "exists approval(decision in [待审,驳回])", then: BlockEffectiveness, priority: 160 }
+    soft:
+      - { id: LowCapitalVsAmount,    label: 实缴远低于合同额, when: "counterparty.paidCapital < contract.amount", then: RaiseRiskFinding(中), priority: 80 }
+      - { id: WeakLiabilityCap,      label: 责任上限缺失/过低, when: "not hasClause(责任上限) 或 cap < amount*0.3", then: RaiseRiskFinding(中), priority: 78 }
+      - { id: AutoRenewalTrap,       label: 自动续约陷阱,     when: "hasClause(续约) 且 autoRenew 且 not exitOption", then: RaiseRiskFinding(中), priority: 72 }
+      - { id: LongPaymentTerm,       label: 账期过长,         when: "paymentTerm.paymentDays > 90", then: RaiseRiskFinding(中), priority: 70 }
+      - { id: MilestoneNoAcceptance, label: 里程碑无验收标准, when: "milestone.acceptanceCriteria == null", then: RaiseRiskFinding(低), priority: 65 }
+      - { id: RecentlyEstablished,   label: 成立时间过短,     when: "monthsSince(counterparty.establishedDate) < 12", then: RaiseRiskFinding(低), priority: 60 }
+      - { id: FrequentAmendment,     label: 频繁变更,         when: "count(amendment) >= 3", then: RaiseRiskFinding(低), priority: 55 }
+    weightTable:          # 软规则权重；为空则软规则只列举不打分
+      LowCapitalVsAmount: 0.3
+      WeakLiabilityCap: 0.5
+      AutoRenewalTrap: 0.4
+      LongPaymentTerm: 0.3
+      MilestoneNoAcceptance: 0.2
+      RecentlyEstablished: 0.2
+      FrequentAmendment: 0.2
+      aggregate: weighted_sum
+      threshold: { attention: 0.4, high: 0.7 }
+
+  constraints:
+    - { id: PaymentLeContractAmount,   expr: "sum(paymentTerm.amount) <= contract.amount", kind: hard }
+    - { id: MilestoneCoversDeliverable,expr: "forall d in Deliverable exists m: deliveredAt(d,m)", kind: soft, weight: 0.3 }
+    - { id: AmountVsCapital,           expr: "contract.amount <= counterparty.paidCapital * 5", kind: soft, weight: 0.4 }
+
+  behaviors:   # 规则命中后的系统动作，衔接流程
+    - { id: Veto,                label: 否决,          effect: "结论=拒签,短路后续", hook: 审核流程出驳回 }
+    - { id: RaiseRiskFinding,    label: 提出风险项,    effect: "写风险项(等级+证据+溯源)", hook: 风险清单 }
+    - { id: RequireApproval,     label: 要求审批,      effect: "生成审批记录(待审)", hook: 路由审批 }
+    - { id: RequireHumanReview,  label: 要求人工复核,  effect: "needsHuman=true", hook: 转人工队列 }
+    - { id: ProposeAmendment,    label: 生成修订提案,  effect: "产出条款修订提案(不直接改)", hook: 反馈业务 }
+    - { id: BlockEffectiveness,  label: 阻止生效,      effect: "合同锁定为审核中", hook: 阻断生效节点 }
+    - { id: Notify,              label: 通知,          effect: "推送相关方", hook: 通知/工单 }
+    - { id: RecordDecision,      label: 记录决策与溯源, effect: "写决策+traceId+版本号", hook: 全程审计与复现 }

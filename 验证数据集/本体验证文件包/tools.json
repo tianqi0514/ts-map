@@ -1,0 +1,59 @@
+{
+  "_meta": "manus 式 Agent 的 function-calling 工具集。工具均建在本体+图上；结果一律 JSON 回灌。Agent 自主决定调谁/几次/顺序/何时停。",
+  "tools": [
+    { "type": "function", "function": {
+      "name": "ontology_get_slice",
+      "description": "取指定 profile 的本体切片：返回本步可见的对象类型、字段、可用关系、绑定规则与工具。Agent 应先取切片以明确边界(能动哪些字段、越界即不可读)。",
+      "parameters": { "type":"object", "properties": {
+        "profile": { "type":"string", "description":"如 subject-due-diligence / legal-procurement" } }, "required":["profile"] } } },
+
+    { "type": "function", "function": {
+      "name": "graph_traverse",
+      "description": "图穿透：从起点节点沿某关系走 1..hops 跳，返回路径与终点。用于股权穿透找最终受益人(UBO)、关联展开等。",
+      "parameters": { "type":"object", "properties": {
+        "startId": {"type":"string","description":"起点节点ID，如 taxId 或 contractNo"},
+        "rel": {"type":"string","enum":["HAS_SHAREHOLDER","SIGNED_BY_COUNTERPARTY","HAS_LEGAL_REP","RELATED"]},
+        "hops": {"type":"integer","minimum":1,"maximum":4},
+        "direction": {"type":"string","enum":["out","in","both"],"default":"out"} },
+        "required":["startId","rel","hops"] } } },
+
+    { "type": "function", "function": {
+      "name": "graph_common_neighbors",
+      "description": "找两实体在图上的共同邻居/共同关联(共同UBO、共同法人、共同关联方等)。用于识别隐藏关联。",
+      "parameters": { "type":"object", "properties": {
+        "a": {"type":"string"}, "b": {"type":"string"} }, "required":["a","b"] } } },
+
+    { "type": "function", "function": {
+      "name": "graph_shortest_path",
+      "description": "返回两实体间的最短关联路径(若存在)，用于证明/否证两主体是否暗中相连。",
+      "parameters": { "type":"object", "properties": {
+        "a": {"type":"string"}, "b": {"type":"string"}, "maxHops": {"type":"integer","default":4} }, "required":["a","b"] } } },
+
+    { "type": "function", "function": {
+      "name": "entity_get",
+      "description": "读取某实体的字段(受当前本体切片约束，越界字段返回 null 并标 forbidden)。",
+      "parameters": { "type":"object", "properties": {
+        "id": {"type":"string"}, "fields": {"type":"array","items":{"type":"string"}} }, "required":["id"] } } },
+
+    { "type": "function", "function": {
+      "name": "clause_read_text",
+      "description": "读取某合同全部条款的原文 text(非结构化)。供 Agent 做语义研判，发现规则标签看不出的陷阱(如责任上限被架空、付款与交付错配、保密无期限)。",
+      "parameters": { "type":"object", "properties": {
+        "contractId": {"type":"string"} }, "required":["contractId"] } } },
+
+    { "type": "function", "function": {
+      "name": "external_lookup",
+      "description": "查外部/弱信号事实：征信、工商、涉诉、银行流水、注册地址、代办、共同联系人等。返回带 source+fetchedAt 的事实，供拼图与溯源。",
+      "parameters": { "type":"object", "properties": {
+        "entity": {"type":"string"},
+        "source": {"type":"string","enum":["credit","gsxt","litigation","sanction","bankflow","registry"]} },
+        "required":["entity","source"] } } },
+
+    { "type": "function", "function": {
+      "name": "rule_evaluate",
+      "description": "对某合同跑符号规则引擎(硬+软)，返回确定性结论(否决项/风险信号/缺强制条款等)。Agent 把它当硬地基，自己只补语义与判断，不重复规则能做的事。",
+      "parameters": { "type":"object", "properties": {
+        "contractId": {"type":"string"}, "policyVersion": {"type":"string","description":"可指定按某政策版本评，用于历史复现"} },
+        "required":["contractId"] } } }
+  ]
+}

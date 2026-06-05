@@ -1,0 +1,518 @@
+{
+  "_meta": {
+    "name": "本体验证种子数据",
+    "version": "1.0",
+    "note": "跨4主体/5合同/2政策版本；机读，供程序灌库。配合 ontology.yaml 使用。"
+  },
+  "OwnEntity": [
+    {
+      "entityId": "OE-001",
+      "name": "华东制造集团有限公司",
+      "role": "采购方"
+    }
+  ],
+  "CounterParty": [
+    {
+      "taxId": "S-204",
+      "name": "深圳市XX科技有限公司",
+      "status": "正常",
+      "regCapital": 1000000,
+      "paidCapital": 500000,
+      "establishedDate": "2023-09-01",
+      "businessStatus": "正常",
+      "creditScore": 55,
+      "regAddress": "深圳市南山区科技园路18号A座2203",
+      "bankAcctTail": "8843",
+      "registrant": "代理-粤信财税"
+    },
+    {
+      "taxId": "S-118",
+      "name": "鹏达供应链有限公司",
+      "status": "正常",
+      "regCapital": 2000000,
+      "paidCapital": 2000000,
+      "establishedDate": "2018-04-10",
+      "businessStatus": "正常",
+      "creditScore": 71
+    },
+    {
+      "taxId": "S-301",
+      "name": "海岳贸易有限公司",
+      "status": "正常",
+      "regCapital": 8000000,
+      "paidCapital": 8000000,
+      "establishedDate": "2019-02-20",
+      "businessStatus": "正常",
+      "creditScore": 78,
+      "regAddress": "深圳市南山区科技园路18号A座2201",
+      "bankAcctTail": "8841",
+      "registrant": "代理-粤信财税"
+    },
+    {
+      "taxId": "HD-CTRL",
+      "name": "海岳控股（有限合伙）",
+      "status": "正常",
+      "regCapital": 5000000,
+      "paidCapital": 5000000,
+      "establishedDate": "2017-06-01",
+      "businessStatus": "正常",
+      "creditScore": 80
+    },
+    {
+      "taxId": "S-900",
+      "name": "国信达实业有限公司",
+      "status": "黑名单",
+      "regCapital": 3000000,
+      "paidCapital": 3000000,
+      "establishedDate": "2016-08-12",
+      "businessStatus": "异常",
+      "creditScore": 22,
+      "regAddress": "深圳市福田区XX路",
+      "bankAcctTail": "1102",
+      "registrant": "自办"
+    }
+  ],
+  "LegalRep": [
+    {
+      "repId": "LR-204",
+      "party": "S-204",
+      "name": "张某",
+      "since": "2024-03-01"
+    },
+    {
+      "repId": "LR-118",
+      "party": "S-118",
+      "name": "张某",
+      "since": "2022-01-05"
+    },
+    {
+      "repId": "LR-301",
+      "party": "S-301",
+      "name": "陈某",
+      "since": "2020-09-01"
+    }
+  ],
+  "Shareholder": [
+    {
+      "shId": "SH-204-1",
+      "party": "S-204",
+      "holder": "王某",
+      "holderType": "自然人",
+      "ratio": 0.7,
+      "isUBO": true
+    },
+    {
+      "shId": "SH-204-2",
+      "party": "S-204",
+      "holder": "鹏程投资",
+      "holderType": "机构",
+      "ratio": 0.3,
+      "isUBO": false
+    },
+    {
+      "shId": "SH-301-1",
+      "party": "S-301",
+      "holder": "HD-CTRL",
+      "holderType": "机构",
+      "ratio": 0.6,
+      "isUBO": false
+    },
+    {
+      "shId": "SH-301-2",
+      "party": "S-301",
+      "holder": "陈某",
+      "holderType": "自然人",
+      "ratio": 0.4,
+      "isUBO": false
+    },
+    {
+      "shId": "SH-HD-1",
+      "party": "HD-CTRL",
+      "holder": "王某",
+      "holderType": "自然人",
+      "ratio": 0.8,
+      "isUBO": true
+    },
+    {
+      "shId": "SH-900-1",
+      "party": "S-900",
+      "holder": "王某",
+      "holderType": "自然人",
+      "ratio": 0.9,
+      "isUBO": true
+    }
+  ],
+  "Signatory": [
+    {
+      "sigId": "SG-204",
+      "party": "S-204",
+      "name": "李某",
+      "authDocNo": "AUTH-204",
+      "authValidTo": "2024-12-31",
+      "authStatus": "有效"
+    },
+    {
+      "sigId": "SG-301",
+      "party": "S-301",
+      "name": "陈某",
+      "authDocNo": "AUTH-301",
+      "authValidTo": "2025-06-30",
+      "authStatus": "有效"
+    }
+  ],
+  "Qualification": [
+    {
+      "qualId": "QL-204",
+      "party": "S-204",
+      "qualType": "增值电信业务许可证",
+      "validTo": "2026-08-31",
+      "status": "有效"
+    },
+    {
+      "qualId": "QL-301",
+      "party": "S-301",
+      "qualType": "进出口经营许可",
+      "validTo": "2027-01-31",
+      "status": "有效"
+    }
+  ],
+  "Contract": [
+    {
+      "contractNo": "C-2024-001",
+      "type": "采购",
+      "counterparty": "S-204",
+      "own": "OE-001",
+      "amount": 1200000,
+      "signatory": "SG-204",
+      "policyVersion": "v2",
+      "status": "审核中",
+      "signDate": "2024-06-08",
+      "involvesPII": true,
+      "counterpartyCoop": "一般",
+      "fulfillmentProgress": "预付已付,未交付"
+    },
+    {
+      "contractNo": "C-2024-005",
+      "type": "采购",
+      "counterparty": "S-118",
+      "own": "OE-001",
+      "amount": 600000,
+      "policyVersion": "v2",
+      "status": "审核中",
+      "signDate": "2024-06-09",
+      "involvesPII": false,
+      "counterpartyCoop": "高",
+      "fulfillmentProgress": "未开始"
+    },
+    {
+      "contractNo": "C-2024-006",
+      "type": "采购",
+      "counterparty": "S-204",
+      "own": "OE-001",
+      "amount": 450000,
+      "policyVersion": "v2",
+      "status": "审核中",
+      "signDate": "2024-06-10",
+      "involvesPII": true,
+      "counterpartyCoop": "低",
+      "fulfillmentProgress": "未开始"
+    },
+    {
+      "contractNo": "C-2024-007",
+      "type": "采购",
+      "counterparty": "S-301",
+      "own": "OE-001",
+      "amount": 2500000,
+      "signatory": "SG-301",
+      "policyVersion": "v2",
+      "status": "审核中",
+      "signDate": "2024-06-12",
+      "involvesPII": true,
+      "counterpartyCoop": "未知",
+      "fulfillmentProgress": "未签署"
+    },
+    {
+      "contractNo": "C-2023-088",
+      "type": "采购",
+      "counterparty": "S-204",
+      "own": "OE-001",
+      "amount": 800000,
+      "policyVersion": "v1",
+      "status": "已生效",
+      "signDate": "2023-10-15",
+      "involvesPII": true,
+      "counterpartyCoop": "一般",
+      "fulfillmentProgress": "已履约完成"
+    }
+  ],
+  "Clause": [
+    {
+      "clauseId": "C-2024-001#01",
+      "contract": "C-2024-001",
+      "clauseType": "付款",
+      "mandatory": true,
+      "text": "买方应于合同签署后支付合同总额的90%作为预付款，余款10%于全部货物验收合格后30日内支付。"
+    },
+    {
+      "clauseId": "C-2024-001#02",
+      "contract": "C-2024-001",
+      "clauseType": "质量",
+      "mandatory": true,
+      "text": "卖方保证货物符合行业通用标准。"
+    },
+    {
+      "clauseId": "C-2024-001#03",
+      "contract": "C-2024-001",
+      "clauseType": "责任上限",
+      "mandatory": false,
+      "cap": 100000,
+      "text": "卖方对本合同项下的赔偿责任以合同金额为限，且仅限于买方的直接损失；间接损失、利润损失、数据损失概不负责。"
+    },
+    {
+      "clauseId": "C-2024-005#01",
+      "contract": "C-2024-005",
+      "clauseType": "付款",
+      "mandatory": true
+    },
+    {
+      "clauseId": "C-2024-005#02",
+      "contract": "C-2024-005",
+      "clauseType": "质量",
+      "mandatory": true
+    },
+    {
+      "clauseId": "C-2024-006#01",
+      "contract": "C-2024-006",
+      "clauseType": "付款",
+      "mandatory": true
+    },
+    {
+      "clauseId": "C-2024-006#02",
+      "contract": "C-2024-006",
+      "clauseType": "质量",
+      "mandatory": true
+    },
+    {
+      "clauseId": "C-2024-007#01",
+      "contract": "C-2024-007",
+      "clauseType": "付款",
+      "mandatory": true,
+      "text": "买方分三期支付：预付30%、到货60%、验收10%。"
+    },
+    {
+      "clauseId": "C-2024-007#02",
+      "contract": "C-2024-007",
+      "clauseType": "质量",
+      "mandatory": true,
+      "text": "卖方保证全检合格率不低于99%。"
+    },
+    {
+      "clauseId": "C-2024-007#03",
+      "contract": "C-2024-007",
+      "clauseType": "数据合规",
+      "mandatory": true,
+      "text": "双方按《个人信息保护法》要求处理个人信息，具体安全措施另行约定。"
+    },
+    {
+      "clauseId": "C-2023-088#01",
+      "contract": "C-2023-088",
+      "clauseType": "付款",
+      "mandatory": true
+    },
+    {
+      "clauseId": "C-2023-088#02",
+      "contract": "C-2023-088",
+      "clauseType": "质量",
+      "mandatory": true
+    },
+    {
+      "clauseId": "C-2024-001#04",
+      "contract": "C-2024-001",
+      "clauseType": "保密",
+      "mandatory": false,
+      "text": "乙方应对知悉的商业秘密承担保密义务，保密期限至甲方认为无需保密时止。"
+    }
+  ],
+  "Obligation": [
+    {
+      "obId": "OB-001",
+      "contract": "C-2024-001",
+      "obligor": "S-204",
+      "description": "交付50台ICX-9并90天质保",
+      "dueDate": "2024-09-30",
+      "status": "未开始"
+    }
+  ],
+  "PaymentTerm": [
+    {
+      "ptId": "PT-001-1",
+      "contract": "C-2024-001",
+      "stage": "预付",
+      "ratio": 0.3,
+      "amount": 360000,
+      "paymentDays": 30
+    },
+    {
+      "ptId": "PT-001-2",
+      "contract": "C-2024-001",
+      "stage": "到货",
+      "ratio": 0.6,
+      "amount": 720000,
+      "paymentDays": 60
+    },
+    {
+      "ptId": "PT-001-3",
+      "contract": "C-2024-001",
+      "stage": "质保金",
+      "ratio": 0.1,
+      "amount": 120000,
+      "paymentDays": 365
+    }
+  ],
+  "Payment": [
+    {
+      "payId": "PAY-001-1",
+      "against": "PT-001-1",
+      "amount": 360000,
+      "paidAt": "2024-06-20",
+      "status": "已付"
+    }
+  ],
+  "Deliverable": [
+    {
+      "delId": "DEL-001",
+      "contract": "C-2024-001",
+      "name": "工业控制设备",
+      "qty": 50,
+      "spec": "ICX-9"
+    }
+  ],
+  "Milestone": [
+    {
+      "msId": "MS-001-1",
+      "contract": "C-2024-001",
+      "name": "到货",
+      "dueDate": "2024-09-30",
+      "acceptanceCriteria": null,
+      "status": "待开始"
+    },
+    {
+      "msId": "MS-001-2",
+      "contract": "C-2024-001",
+      "name": "验收",
+      "dueDate": "2024-10-15",
+      "acceptanceCriteria": "全检合格率≥99%",
+      "status": "待开始"
+    }
+  ],
+  "Invoice": [
+    {
+      "invId": "INV-001",
+      "amount": 360000,
+      "type": "增值税专票",
+      "issuedAt": "2024-06-18"
+    }
+  ],
+  "CompliancePolicy": [
+    {
+      "policyId": "CP-PROC",
+      "version": "v1",
+      "effectiveFrom": "2023-01-01",
+      "mandatoryClauses": [
+        "付款",
+        "质量"
+      ]
+    },
+    {
+      "policyId": "CP-PROC",
+      "version": "v2",
+      "effectiveFrom": "2024-06-01",
+      "mandatoryClauses": [
+        "付款",
+        "质量",
+        "数据合规"
+      ],
+      "reason": "个人信息保护法收紧"
+    }
+  ],
+  "Regulation": [
+    {
+      "regId": "REG-PIPL",
+      "name": "个人信息保护法",
+      "jurisdiction": "CN",
+      "effectiveFrom": "2021-11-01"
+    }
+  ],
+  "Approval": [
+    {
+      "apId": "AP-001",
+      "contract": "C-2024-001",
+      "stage": "法务",
+      "decision": "待审"
+    }
+  ],
+  "ExternalFact": [
+    {
+      "about": "S-204",
+      "field": "litigationCount_12m",
+      "value": 3,
+      "source": "ext:tianyancha",
+      "fetchedAt": "2024-06-10"
+    },
+    {
+      "about": "S-204",
+      "field": "creditScore",
+      "value": 55,
+      "source": "ext:credit",
+      "fetchedAt": "2024-06-10"
+    },
+    {
+      "about": "S-204",
+      "field": "regCapital",
+      "value": 1000000,
+      "source": "ext:gsxt",
+      "fetchedAt": "2024-06-10"
+    },
+    {
+      "about": "S-301",
+      "field": "sanctionHit",
+      "value": false,
+      "source": "ext:sanction",
+      "fetchedAt": "2024-06-12"
+    }
+  ],
+  "CoopHistory": [
+    {
+      "with": "S-204",
+      "contract": "C-2023-088",
+      "outcome": "完成",
+      "delayEvents": 2,
+      "note": "两次交付延期各约2周"
+    }
+  ],
+  "WeakSignal": [
+    {
+      "type": "资金往来",
+      "a": "S-301",
+      "b": "S-204",
+      "amount": 480000,
+      "date": "2024-03-12",
+      "source": "ext:bankflow",
+      "note": "S-301向S-204转账"
+    },
+    {
+      "type": "共同联系人",
+      "a": "S-301",
+      "b": "S-204",
+      "value": "手机号 138****8841",
+      "source": "ext:registry"
+    },
+    {
+      "type": "同一代办",
+      "a": "S-301",
+      "b": "S-204",
+      "value": "粤信财税",
+      "source": "ext:gsxt"
+    }
+  ]
+}
