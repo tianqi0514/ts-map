@@ -95,6 +95,16 @@ export default function RuleEnginePanel({ spaces }: { spaces: Space[] }) {
   const [expandedReasoning, setExpandedReasoning] = React.useState<Set<string>>(
     new Set()
   );
+  // 自然语言测试
+  const [nlScene, setNlScene] = React.useState("");
+  const [nlLoading, setNlLoading] = React.useState(false);
+  const [nlResult, setNlResult] = React.useState<{
+    scene_description: string;
+    test_data: Record<string, unknown>;
+    rule_result: RuleEngineResult;
+    llm_model: string;
+  } | null>(null);
+  const [nlError, setNlError] = React.useState("");
 
   React.useEffect(() => {
     setTestData(JSON.stringify(TEST_DATA_PRESETS[scenario], null, 2));
@@ -143,6 +153,48 @@ export default function RuleEnginePanel({ spaces }: { spaces: Space[] }) {
     });
   }
 
+  async function nlExecute() {
+    if (!selectedSpaceId) {
+      setNlError("请先选择本体空间");
+      return;
+    }
+    if (!nlScene.trim()) {
+      setNlError("请输入场景描述");
+      return;
+    }
+    setNlError("");
+    setNlLoading(true);
+    try {
+      const res = await api<{
+        scene_description: string;
+        test_data: Record<string, unknown>;
+        rule_result: RuleEngineResult;
+        llm_model: string;
+        error?: string;
+      }>("/api/brain/rule-engine/nl-simple-test", {
+        method: "POST",
+        body: JSON.stringify({
+          space_id: selectedSpaceId,
+          scene_description: nlScene,
+        }),
+      });
+      if (res.data?.error) {
+        setNlError(res.data.error);
+        setNlResult(null);
+      } else {
+        setNlResult(res.data);
+        // 同时更新传统结果区域
+        setResult(res.data.rule_result);
+        // 把生成的数据填入 textarea
+        setTestData(JSON.stringify(res.data.test_data, null, 2));
+      }
+    } catch (e) {
+      setNlError(String(e));
+    } finally {
+      setNlLoading(false);
+    }
+  }
+
   return (
     <section className="resource-panel">
       <div className="rule-engine-layout">
@@ -167,6 +219,62 @@ export default function RuleEnginePanel({ spaces }: { spaces: Space[] }) {
             </select>
           </label>
 
+          {/* ── 自然语言测试 ── */}
+          <div
+            style={{
+              background: "#fafafa",
+              border: "1px solid #e4e8ef",
+              borderRadius: 10,
+              padding: 14,
+              marginBottom: 16,
+            }}
+          >
+            <h4 style={{ margin: "0 0 10px", fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+              <Zap size={14} />
+              自然语言测试（LLM 生成数据）
+            </h4>
+            <label style={{ marginBottom: 8 }}>
+              用中文描述测试场景
+              <textarea
+                value={nlScene}
+                onChange={(e) => setNlScene(e.target.value)}
+                rows={3}
+                placeholder="如：一份200万的采购合同，还没有经过法务审批，合作方信用评分只有60分"
+                style={{ fontSize: 13 }}
+              />
+            </label>
+            {nlError && <p className="form-error">{nlError}</p>}
+            <button
+              className="primary-button"
+              onClick={nlExecute}
+              disabled={nlLoading || !selectedSpaceId}
+              style={{ width: "100%" }}
+            >
+              {nlLoading ? "LLM 生成数据中..." : "🤖 LLM 生成数据并执行规则"}
+            </button>
+            {nlResult && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  background: "#f6ffed",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: "#389e0d",
+                }}
+              >
+                ✅ LLM ({nlResult.llm_model}) 已生成数据并执行规则，命中{" "}
+                {nlResult.rule_result.hit_count} 条
+              </div>
+            )}
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+            <h4 style={{ margin: "0 0 10px", fontSize: 14, color: "var(--muted)" }}>
+              或手动选择场景
+            </h4>
+          </div>
+
           <label>
             测试场景
             <select
@@ -187,7 +295,7 @@ export default function RuleEnginePanel({ spaces }: { spaces: Space[] }) {
               className="json-input"
               value={testData}
               onChange={(e) => setTestData(e.target.value)}
-              rows={18}
+              rows={14}
             />
           </label>
 

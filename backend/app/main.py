@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app import crud
 from app.brain import api as brain_api
 from app.config import get_settings
+from app.config_module import api as config_api
 from app.database import Base, SessionLocal, engine, get_db
 from app.graph import GraphProjector
 from app.models import OntologyElement, OntologySpace, VersionRecord
@@ -15,6 +16,7 @@ from app.schemas import ApiResponse, ElementCreate, ElementUpdate, SpaceCreate
 settings = get_settings()
 app = FastAPI(title="传神智谱 API", version="0.1.0")
 app.include_router(brain_api.router)
+app.include_router(config_api.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

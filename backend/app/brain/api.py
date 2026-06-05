@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.brain import crud as brain_crud
@@ -25,6 +27,7 @@ from app.brain.schemas import (
 )
 from app.brain.synthetic_data import generate_preview
 from app.database import get_db
+from app.llm_client import LLMClient
 from app.schemas import ApiResponse
 
 router = APIRouter(prefix="/api/brain", tags=["brain"])
@@ -447,3 +450,199 @@ def _generate_test_data(scenario: str) -> dict[str, Any]:
             "status": "草稿",
         },
     }
+
+
+# ── LLM 自然语言规则测试 ──
+
+class NLRuleTestPayload(BaseModel):
+    space_id: str
+    connector_id: str
+    scene_description: str
+
+
+@router.post("/rule-engine/nl-test")
+def nl_rule_test(
+    payload: NLRuleTestPayload,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """
+    自然语言规则测试：
+    1. 用 LLM 根据场景描述生成测试数据
+    2. 执行规则引擎
+    3. 返回完整结果
+    """
+    client = LLMClient()
+    if not client.is_available():
+        return ApiResponse(data={
+            "error": "LLM 未配置，请在系统配置中检查 LLM 设置",
+            "llm_available": False,
+        })
+
+    # 获取连接器字段映射
+    mappings = brain_crud.list_mappings(db, payload.connector_id)
+    if not mappings:
+        return ApiResponse(data={
+            "error": "连接器没有字段映射，请先配置映射",
+        })
+
+    # 获取本体对象定义（用于提示 LLM）
+    from app.models import OntologyElement
+    objects = (
+        db.query(OntologyElement)
+        .filter(
+            OntologyElement.space_id == payload.space_id,
+            OntologyElement.resource_type == "object",
+        )
+        .all()
+    )
+    ontology_objects = [
+        {"code": obj.code, "name": obj.name, "payload": obj.payload}
+        for obj in objects
+    ]
+
+    mapping_list = [
+        {
+            "source_field": m.source_field,
+            "transform": m.transform,
+            "target_code": m.target_code,
+        }
+        for m in mappings
+    ]
+
+    # 调用 LLM 生成测试数据
+    llm_result = client.generate_test_data(
+        scene_description=payload.scene_description,
+        connector_mappings=mapping_list,
+        ontology_objects=ontology_objects,
+    )
+
+    if not llm_result.get("test_data"):
+        return ApiResponse(data={
+            "error": "LLM 未能生成有效测试数据",
+            "llm_raw": llm_result.get("raw", ""),
+        })
+
+    test_data = llm_result["test_data"]
+
+    # 执行规则引擎
+    engine = RuleEngine(db)
+    rule_result = engine.execute(space_id=payload.space_id, data=test_data)
+
+    # 保存执行记录
+    try:
+        brain_crud.create_execution(
+            db=db,
+            space_id=payload.space_id,
+            input_summary={k: str(v)[:100] for k, v in test_data.items()},
+            trace=[
+                {
+                    "rule_id": h["rule_id"],
+                    "rule_name": h["rule_name"],
+                    "matched": h["matched"],
+                    "severity": h["severity"],
+                }
+                for h in rule_result["hits"]
+            ],
+            hit_count=rule_result["hit_count"],
+            block_count=rule_result["block_count"],
+            suggest_count=rule_result["hit_count"] - rule_result["block_count"],
+            status="success",
+        )
+    except Exception:
+        pass
+
+    return ApiResponse(data={
+        "scene_description": payload.scene_description,
+        "test_data": test_data,
+        "llm_usage": llm_result.get("usage", {}),
+        "llm_model": llm_result.get("model", ""),
+        "rule_result": rule_result,
+    })
+
+
+class NLSimpleRuleTestPayload(BaseModel):
+    space_id: str
+    scene_description: str
+
+
+@router.post("/rule-engine/nl-simple-test")
+def nl_simple_rule_test(
+    payload: NLSimpleRuleTestPayload,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """
+    简化的自然语言规则测试（不依赖连接器）：
+    LLM 直接根据场景描述和本体规则生成测试数据
+    """
+    client = LLMClient()
+    if not client.is_available():
+        return ApiResponse(data={
+            "error": "LLM 未配置，请在系统配置中检查 LLM 设置",
+            "llm_available": False,
+        })
+
+    # 获取本体规则
+    from app.models import ElementStatus, OntologyElement
+    rules = (
+        db.query(OntologyElement)
+        .filter(
+            OntologyElement.space_id == payload.space_id,
+            OntologyElement.resource_type == "rule",
+            OntologyElement.status == ElementStatus.active,
+        )
+        .all()
+    )
+
+    rules_desc = "\n".join([
+        f"- {r.name} ({r.payload.get('rule_type', '规则')}): "
+        f"当 {r.payload.get('condition', '无')} 时，{r.payload.get('result', '无')}"
+        for r in rules[:10]
+    ])
+
+    system_prompt = """你是一个企业业务数据生成助手。
+根据用户描述的场景和系统定义的规则，生成符合结构的 JSON 测试数据。
+只返回 JSON 对象，不要任何解释。"""
+
+    user_prompt = f"""场景描述：{payload.scene_description}
+
+系统规则（供参考，生成数据应尽量触发/避开这些规则）：
+{rules_desc}
+
+请生成一段 JSON 测试数据，格式示例：
+{{
+  "contract": {{"contractNo": "...", "amount": ..., "status": "..."}},
+  "party": {{"name": "...", "creditScore": ...}},
+  "approval": {{"decision": "..."}},
+  "risk": {{"level": "..."}}
+}}
+"""
+
+    result = client.chat(
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        json_mode=True,
+    )
+
+    try:
+        test_data = json.loads(result["content"])
+        if "test_data" in test_data and isinstance(test_data["test_data"], dict):
+            test_data = test_data["test_data"]
+    except json.JSONDecodeError:
+        return ApiResponse(data={
+            "error": "LLM 返回了非 JSON 内容",
+            "raw": result["content"],
+        })
+
+    # 执行规则引擎
+    engine = RuleEngine(db)
+    rule_result = engine.execute(space_id=payload.space_id, data=test_data)
+
+    return ApiResponse(data={
+        "scene_description": payload.scene_description,
+        "test_data": test_data,
+        "llm_usage": result.get("usage", {}),
+        "llm_model": result.get("model", ""),
+        "rule_result": rule_result,
+    })

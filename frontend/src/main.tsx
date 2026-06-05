@@ -165,7 +165,7 @@ function App() {
   const [deletingSpace, setDeletingSpace] = React.useState<Space | null>(null);
   const [showImportYaml, setShowImportYaml] = React.useState(false);
   const [importStatus, setImportStatus] = React.useState<string>("");
-  const [activeModule, setActiveModule] = React.useState<"zhishen" | "brain">("zhishen");
+  const [activeModule, setActiveModule] = React.useState<"zhishen" | "brain" | "config">("zhishen");
 
   const selectedSpace = spaces.find((space) => space.id === selectedSpaceId);
 
@@ -334,6 +334,13 @@ function App() {
             <BrainCircuit size={16} />
             <span>智脑</span>
           </button>
+          <button
+            className={activeModule === "config" ? "module-btn active" : "module-btn"}
+            onClick={() => setActiveModule("config")}
+          >
+            <Settings size={16} />
+            <span>配置</span>
+          </button>
         </div>
         <nav>
           {activeModule === "zhishen" ? (
@@ -372,7 +379,7 @@ function App() {
                 </>
               )}
             </>
-          ) : (
+          ) : activeModule === "brain" ? (
             <>
               <div className="nav-divider">传神智脑</div>
               <div className="nav-item" style={{ cursor: "default", opacity: 0.7 }}>
@@ -388,6 +395,14 @@ function App() {
                 <span>推理轨迹记录</span>
               </div>
             </>
+          ) : (
+            <>
+              <div className="nav-divider">系统配置</div>
+              <div className="nav-item" style={{ cursor: "default", opacity: 0.7 }}>
+                <Settings size={17} />
+                <span>LLM 配置</span>
+              </div>
+            </>
           )}
         </nav>
       </aside>
@@ -398,16 +413,20 @@ function App() {
             <p className="crumb">
               {activeModule === "brain"
                 ? "智脑 / 业务数据连接器与规则引擎"
-                : selectedSpace
-                  ? `智谱 / ${selectedSpace.name}`
-                  : "智谱 / 本体列表"}
+                : activeModule === "config"
+                  ? "配置 / LLM 与系统设置"
+                  : selectedSpace
+                    ? `智谱 / ${selectedSpace.name}`
+                    : "智谱 / 本体列表"}
             </p>
             <h1>
               {activeModule === "brain"
                 ? "传神智脑"
-                : selectedSpace
-                  ? activeLabel(active)
-                  : "本体列表"}
+                : activeModule === "config"
+                  ? "系统配置"
+                  : selectedSpace
+                    ? activeLabel(active)
+                    : "本体列表"}
             </h1>
           </div>
           <div className="top-actions">
@@ -432,6 +451,8 @@ function App() {
 
         {activeModule === "brain" ? (
           <BrainModule spaces={spaces} />
+        ) : activeModule === "config" ? (
+          <ConfigPanel />
         ) : !selectedSpace ? (
           <OntologyList
             spaces={spaces}
@@ -2072,6 +2093,156 @@ function YamlImportDrawer({
         </div>
       </div>
     </aside>
+  );
+}
+
+function ConfigPanel() {
+  const [llmConfig, setLlmConfig] = React.useState<{
+    api_key: string;
+    base_url: string;
+    model: string;
+    temperature: number;
+    configured: boolean;
+  } | null>(null);
+  const [testResult, setTestResult] = React.useState<{
+    ok: boolean;
+    response?: string;
+    error?: string;
+  } | null>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    loadConfig();
+  }, []);
+
+  async function loadConfig() {
+    const res = await api<{
+      api_key: string;
+      base_url: string;
+      model: string;
+      temperature: number;
+      configured: boolean;
+    }>("/api/config/llm");
+    setLlmConfig(res.data);
+  }
+
+  async function testConnection() {
+    setLoading(true);
+    try {
+      const res = await api<{ ok: boolean; response?: string; error?: string }>(
+        "/api/config/llm/test",
+        { method: "POST" }
+      );
+      setTestResult(res.data);
+    } catch (e) {
+      setTestResult({ ok: false, error: String(e) });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="dashboard">
+      <div className="workspace-band">
+        <div>
+          <p className="eyebrow">系统配置</p>
+          <h2>LLM 与系统设置</h2>
+          <p>管理大语言模型连接配置和系统参数</p>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h3>LLM 配置</h3>
+        <div className="settings-card">
+          {llmConfig ? (
+            <>
+              <div className="key-value">
+                <span>API Key</span>
+                <strong>{llmConfig.api_key}</strong>
+              </div>
+              <div className="key-value">
+                <span>Base URL</span>
+                <strong>{llmConfig.base_url}</strong>
+              </div>
+              <div className="key-value">
+                <span>模型</span>
+                <strong>{llmConfig.model}</strong>
+              </div>
+              <div className="key-value">
+                <span>Temperature</span>
+                <strong>{llmConfig.temperature}</strong>
+              </div>
+              <div className="key-value">
+                <span>状态</span>
+                <span className={llmConfig.configured ? "status ok" : "status warn"}>
+                  {llmConfig.configured ? "已配置" : "未配置"}
+                </span>
+              </div>
+              <div style={{ marginTop: 16 }}>
+                <button
+                  className="primary-button"
+                  onClick={testConnection}
+                  disabled={loading || !llmConfig.configured}
+                >
+                  {loading ? "测试中..." : "测试连接"}
+                </button>
+              </div>
+              {testResult && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 8,
+                    background: testResult.ok ? "#f6ffed" : "#fff1f0",
+                    color: testResult.ok ? "#389e0d" : "#cf1322",
+                  }}
+                >
+                  {testResult.ok ? (
+                    <>
+                      ✅ 连接成功
+                      {testResult.response && (
+                        <p style={{ margin: "8px 0 0", fontSize: 13 }}>
+                          响应: {testResult.response}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>❌ 连接失败: {testResult.error}</>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="muted">加载配置中...</p>
+          )}
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h3>配置说明</h3>
+        <div className="settings-card">
+          <p style={{ fontSize: 13, lineHeight: 1.6 }}>
+            LLM 配置存储在服务器环境变量中，通过 <code>backend/.env</code> 文件管理。
+            修改配置后需要重启后端服务才能生效。
+          </p>
+          <pre
+            style={{
+              marginTop: 12,
+              padding: 12,
+              background: "#f5f7fa",
+              borderRadius: 8,
+              fontSize: 12,
+              overflow: "auto",
+            }}
+          >
+{`LLM_API_KEY=sk-...
+LLM_BASE_URL=https://api.xiaomimimo.com/v1
+LLM_MODEL=gpt-4o-mini
+LLM_TEMPERATURE=0.3`}
+          </pre>
+        </div>
+      </div>
+    </section>
   );
 }
 
