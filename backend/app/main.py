@@ -1,5 +1,6 @@
-from fastapi import Depends, FastAPI, File, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -7,7 +8,7 @@ from app import crud
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine, get_db
 from app.graph import GraphProjector
-from app.models import OntologySpace, VersionRecord
+from app.models import OntologyElement, OntologySpace, VersionRecord
 from app.schemas import ApiResponse, ElementCreate, ElementUpdate, SpaceCreate
 
 settings = get_settings()
@@ -147,6 +148,38 @@ def get_local_graph(
     return ApiResponse(data={"nodes": [], "edges": [], "message": "图视图同步中或 Neo4j 不可用"})
 
 
+class GraphTraversePayload(BaseModel):
+    start_node_id: str
+    direction: str = "both"
+    max_depth: int = 2
+    edge_types: list[str] | None = None
+    node_types: list[str] | None = None
+    limit: int = 100
+
+
+@app.post("/api/graph/traverse")
+def graph_traverse(payload: GraphTraversePayload, db: Session = Depends(get_db)) -> ApiResponse:
+    """图遍历：从指定节点出发按条件遍历图"""
+    if not projector or not projector.is_available():
+        return ApiResponse(data={"nodes": [], "edges": [], "paths": [], "message": "Neo4j 不可用"})
+
+    # 验证起始节点存在
+    element = db.get(OntologyElement, payload.start_node_id)
+    if not element:
+        raise HTTPException(status_code=404, detail="Start node not found")
+
+    result = projector.traverse(
+        space_id=element.space_id,
+        start_node_id=payload.start_node_id,
+        direction=payload.direction,
+        max_depth=payload.max_depth,
+        edge_types=payload.edge_types,
+        node_types=payload.node_types,
+        limit=payload.limit,
+    )
+    return ApiResponse(data=result)
+
+
 @app.get("/api/spaces/{space_id}/versions")
 def list_versions(space_id: str, db: Session = Depends(get_db)) -> ApiResponse:
     rows = (
@@ -182,7 +215,8 @@ def admin_import_yaml(
 ) -> ApiResponse:
     """从上传的 YAML 文件批量导入本体"""
     import yaml
-    from app.models import ElementStatus
+    from app.models import ElementStatus, OntologyElement, ReferenceEdge
+    from app.graph import create_graph_task
 
     content = file.file.read().decode("utf-8")
     data = yaml.safe_load(content)
@@ -211,94 +245,196 @@ def admin_import_yaml(
     ontology = data.get("ontology", data)
     created_counts: dict[str, int] = {"objects": 0, "properties": 0, "relations": 0, "actions": 0, "rules": 0}
 
+    # 维护 code -> element 映射，用于后续创建引用边
+    by_code: dict[str, OntologyElement] = {}
+
+    def _create(resource: str, code: str, payload_data: ElementCreate) -> OntologyElement:
+        element = crud.create_element(db, projector, space_id, resource, payload_data)
+        by_code[code] = element
+        created_counts[resource] += 1
+        return element
+
     # 创建对象
     for code, spec in ontology.get("objects", {}).items():
-        payload = ElementCreate(
-            code=code,
-            name=spec.get("label", code),
-            description=f"{spec.get('label', code)}对象",
-            status=ElementStatus.active,
-            payload={
-                "key": spec.get("key"),
-                "fields": spec.get("fields", {}),
-            },
-            references=[],
+        _create(
+            "objects",
+            code,
+            ElementCreate(
+                code=code,
+                name=spec.get("label", code),
+                description=f"{spec.get('label', code)}对象",
+                status=ElementStatus.active,
+                payload={"key": spec.get("key"), "fields": spec.get("fields", {})},
+                references=[],
+            ),
         )
-        crud.create_element(db, projector, space_id, "objects", payload)
-        created_counts["objects"] += 1
 
     # 创建属性
     for code, spec in ontology.get("objects", {}).items():
         fields = spec.get("fields", {})
         for field_name, field_type in fields.items():
             prop_code = f"{code}.{field_name}"
-            payload = ElementCreate(
-                code=prop_code,
-                name=field_name,
-                description=f"{spec.get('label', code)}.{field_name}",
-                status=ElementStatus.active,
-                payload={"object_code": code, "data_type": str(field_type)},
-                references=[],
+            _create(
+                "properties",
+                prop_code,
+                ElementCreate(
+                    code=prop_code,
+                    name=field_name,
+                    description=f"{spec.get('label', code)}.{field_name}",
+                    status=ElementStatus.active,
+                    payload={"object_code": code, "data_type": str(field_type)},
+                    references=[],
+                ),
             )
-            crud.create_element(db, projector, space_id, "properties", payload)
-            created_counts["properties"] += 1
 
     # 创建关系
     for link in ontology.get("links", []):
         rel_code = link["name"]
         to_value = link["to"]
         to_codes = to_value if isinstance(to_value, list) else [to_value]
-        payload = ElementCreate(
-            code=rel_code,
-            name=link.get("label", rel_code),
-            description=f"{link.get('label', rel_code)}: {link['from']} -> {', '.join(to_codes)}",
-            status=ElementStatus.active,
-            payload={
-                "source_code": link["from"],
-                "target_codes": to_codes,
-                "cardinality": link.get("card"),
-                "traversable": link.get("traversable", False),
-            },
-            references=[],
+        _create(
+            "relations",
+            rel_code,
+            ElementCreate(
+                code=rel_code,
+                name=link.get("label", rel_code),
+                description=f"{link.get('label', rel_code)}: {link['from']} -> {', '.join(to_codes)}",
+                status=ElementStatus.active,
+                payload={
+                    "source_code": link["from"],
+                    "target_codes": to_codes,
+                    "cardinality": link.get("card"),
+                    "traversable": link.get("traversable", False),
+                },
+                references=[],
+            ),
         )
-        crud.create_element(db, projector, space_id, "relations", payload)
-        created_counts["relations"] += 1
 
     # 创建行为
     for behavior in ontology.get("behaviors", []):
         bcode = behavior["id"]
-        payload = ElementCreate(
-            code=bcode,
-            name=behavior.get("label", bcode),
-            description=behavior.get("effect", ""),
-            status=ElementStatus.active,
-            payload={"hook": behavior.get("hook"), "effect": behavior.get("effect"), "rules": []},
-            references=[],
+        _create(
+            "actions",
+            bcode,
+            ElementCreate(
+                code=bcode,
+                name=behavior.get("label", bcode),
+                description=behavior.get("effect", ""),
+                status=ElementStatus.active,
+                payload={"hook": behavior.get("hook"), "effect": behavior.get("effect"), "rules": []},
+                references=[],
+            ),
         )
-        crud.create_element(db, projector, space_id, "actions", payload)
-        created_counts["actions"] += 1
 
     # 创建规则
     for rule_type in ("hard", "soft"):
         for rule in ontology.get("rules", {}).get(rule_type, []):
             rcode = rule["id"]
-            payload = ElementCreate(
-                code=rcode,
-                name=rule.get("label", rcode),
-                description=f"{rule.get('when', '')} -> {rule.get('then', '')}",
-                status=ElementStatus.active,
-                payload={
-                    "rule_type": "硬规则" if rule_type == "hard" else "软规则",
-                    "priority": rule.get("priority"),
-                    "condition": rule.get("when"),
-                    "result": rule.get("then"),
-                },
-                references=[],
+            _create(
+                "rules",
+                rcode,
+                ElementCreate(
+                    code=rcode,
+                    name=rule.get("label", rcode),
+                    description=f"{rule.get('when', '')} -> {rule.get('then', '')}",
+                    status=ElementStatus.active,
+                    payload={
+                        "rule_type": "硬规则" if rule_type == "hard" else "软规则",
+                        "priority": rule.get("priority"),
+                        "condition": rule.get("when"),
+                        "result": rule.get("then"),
+                    },
+                    references=[],
+                ),
             )
-            crud.create_element(db, projector, space_id, "rules", payload)
-            created_counts["rules"] += 1
 
-    # 触发图同步
-    crud.sync_pending_tasks(db, projector)
+    # ── 创建引用边（ReferenceEdge）──
+    # 1. 属性 -> 对象 (HAS_PROPERTY)
+    for code, spec in ontology.get("objects", {}).items():
+        obj = by_code.get(code)
+        if not obj:
+            continue
+        for field_name in spec.get("fields", {}).keys():
+            prop = by_code.get(f"{code}.{field_name}")
+            if prop:
+                db.add(
+                    ReferenceEdge(
+                        space_id=space_id,
+                        source_type=obj.resource_type,
+                        source_id=obj.id,
+                        edge_type="HAS_PROPERTY",
+                        target_type=prop.resource_type,
+                        target_id=prop.id,
+                    )
+                )
+
+    # 2. 关系 -> 源对象 / 目标对象
+    for link in ontology.get("links", []):
+        rel = by_code.get(link["name"])
+        if not rel:
+            continue
+        src = by_code.get(link["from"])
+        if src:
+            db.add(
+                ReferenceEdge(
+                    space_id=space_id,
+                    source_type=rel.resource_type,
+                    source_id=rel.id,
+                    edge_type="SOURCE",
+                    target_type=src.resource_type,
+                    target_id=src.id,
+                )
+            )
+        to_value = link["to"]
+        to_codes = to_value if isinstance(to_value, list) else [to_value]
+        for tc in to_codes:
+            tgt = by_code.get(tc)
+            if tgt:
+                db.add(
+                    ReferenceEdge(
+                        space_id=space_id,
+                        source_type=rel.resource_type,
+                        source_id=rel.id,
+                        edge_type="TARGET",
+                        target_type=tgt.resource_type,
+                        target_id=tgt.id,
+                    )
+                )
+
+    # 3. 行为 -> 规则（反向：规则引用行为）
+    # 从规则 payload 中提取引用的行为
+    behavior_codes = {b["id"] for b in ontology.get("behaviors", [])}
+    for rule_type in ("hard", "soft"):
+        for rule in ontology.get("rules", {}).get(rule_type, []):
+            rule_elem = by_code.get(rule["id"])
+            if not rule_elem:
+                continue
+            then_text = str(rule.get("then", ""))
+            for bcode in behavior_codes:
+                if bcode in then_text:
+                    beh = by_code.get(bcode)
+                    if beh:
+                        db.add(
+                            ReferenceEdge(
+                                space_id=space_id,
+                                source_type=rule_elem.resource_type,
+                                source_id=rule_elem.id,
+                                edge_type="TRIGGERS",
+                                target_type=beh.resource_type,
+                                target_id=beh.id,
+                            )
+                        )
+
+    db.commit()
+
+    # ── 同步所有元素到 Neo4j（含新引用边）──
+    for element in by_code.values():
+        edges = (
+            db.query(ReferenceEdge)
+            .filter(ReferenceEdge.source_id == element.id, ReferenceEdge.status == "active")
+            .all()
+        )
+        if projector and projector.is_available():
+            projector.upsert_element(element, edges)
 
     return ApiResponse(data={"space_id": space_id, "created": created_counts})

@@ -148,6 +148,125 @@ class GraphProjector:
         ]
         return {"nodes": nodes, "edges": edges}
 
+    def traverse(
+        self,
+        space_id: str,
+        start_node_id: str,
+        direction: str = "both",
+        max_depth: int = 2,
+        edge_types: list[str] | None = None,
+        node_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """图遍历：从指定节点出发按条件遍历图，返回节点、边和路径。"""
+        safe_depth = min(max(max_depth, 1), 5)
+        safe_limit = min(max(limit, 1), 500)
+
+        # 方向模式
+        if direction == "outgoing":
+            rel_pattern = f"-[r*1..{safe_depth}]->"
+        elif direction == "incoming":
+            rel_pattern = f"<-[r*1..{safe_depth}]-"
+        else:
+            rel_pattern = f"-[r*1..{safe_depth}]-"
+
+        # 节点类型过滤
+        node_type_filter = ""
+        node_type_params: dict[str, Any] = {}
+        if node_types:
+            node_type_filter = "AND m.resource_type IN $node_types"
+            node_type_params["node_types"] = node_types
+
+        # 关系类型过滤（在结果后处理，Cypher可变长度路径的类型过滤较复杂）
+        safe_edge_types = None
+        if edge_types:
+            safe_edge_types = [safe_edge_type(et) for et in edge_types]
+
+        query = f"""
+        MATCH path = (n:OntologyNode {{id: $start_id, space_id: $space_id}}){rel_pattern}(m:OntologyNode)
+        WHERE m.space_id = $space_id
+          {node_type_filter}
+        WITH path, length(path) AS path_len
+        ORDER BY path_len
+        LIMIT $limit
+        RETURN path, path_len
+        """
+
+        with self.driver.session() as session:
+            results = list(
+                session.run(
+                    query,
+                    {
+                        "start_id": start_node_id,
+                        "space_id": space_id,
+                        "limit": safe_limit,
+                        **node_type_params,
+                    },
+                )
+            )
+
+        # 收集节点和边（去重）
+        node_map: dict[str, dict[str, Any]] = {}
+        edge_map: dict[str, dict[str, Any]] = {}
+        paths: list[list[str]] = []
+
+        for record in results:
+            path = record["path"]
+            path_len = record["path_len"]
+
+            # 记录路径（节点ID序列）
+            path_nodes = [n["id"] for n in path.nodes]
+            if path_nodes not in paths:
+                paths.append(path_nodes)
+
+            for node in path.nodes:
+                nid = node["id"]
+                if nid not in node_map:
+                    node_map[nid] = {
+                        "id": nid,
+                        "name": node.get("name", ""),
+                        "code": node.get("code", ""),
+                        "type": node.get("resource_type", ""),
+                        "status": node.get("status", ""),
+                        "depth": min(node_map.get(nid, {}).get("depth", path_len), path_len),
+                    }
+                else:
+                    node_map[nid]["depth"] = min(node_map[nid]["depth"], path_len)
+
+            for rel in path.relationships:
+                eid = f"{rel.start_node['id']}->{rel.type}->{rel.end_node['id']}"
+                if eid not in edge_map:
+                    # 关系类型过滤
+                    if safe_edge_types and rel.type not in safe_edge_types:
+                        continue
+                    edge_map[eid] = {
+                        "id": eid,
+                        "source": rel.start_node["id"],
+                        "target": rel.end_node["id"],
+                        "type": rel.type,
+                        "status": rel.get("status", ""),
+                    }
+
+        # 如果关系类型过滤严格，需要过滤掉没有边的孤立节点
+        if safe_edge_types:
+            connected_nodes = set()
+            for edge in edge_map.values():
+                connected_nodes.add(edge["source"])
+                connected_nodes.add(edge["target"])
+            node_map = {k: v for k, v in node_map.items() if k in connected_nodes or k == start_node_id}
+
+        return {
+            "start_node_id": start_node_id,
+            "direction": direction,
+            "max_depth": safe_depth,
+            "node_count": len(node_map),
+            "edge_count": len(edge_map),
+            "path_count": len(paths),
+            "nodes": list(node_map.values()),
+            "edges": list(edge_map.values()),
+            "paths": paths,
+        }
+
 
 def safe_edge_type(edge_type: str) -> str:
     return "".join(ch for ch in edge_type.upper() if ch.isalnum() or ch == "_")

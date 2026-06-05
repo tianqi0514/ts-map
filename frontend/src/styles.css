@@ -1103,4 +1103,178 @@ pre {
     grid-template-columns: 1fr;
     height: auto;
   }
+
+  .traverse-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── 图遍历 ── */
+.traverse-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  height: calc(100vh - 140px);
+  overflow: hidden;
+}
+
+.traverse-params {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.traverse-params h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.traverse-params label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.traverse-params label input,
+.traverse-params label select {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.traverse-params label input[type="number"] {
+  width: 80px;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.checkbox-group > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.checkbox-label {
+  display: flex !important;
+  align-items: center;
+  flex-direction: row !important;
+  gap: 5px !important;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.checkbox-label input {
+  margin: 0;
+}
+
+.traverse-result {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.traverse-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  gap: 12px;
+}
+
+.traverse-empty p {
+  margin: 0;
+  font-size: 15px;
+}
+
+.traverse-empty span {
+  font-size: 13px;
+  color: #888;
+}
+
+.traverse-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.traverse-stats .metric {
+  min-width: 90px;
+}
+
+.traverse-result h4 {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+
+.traverse-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.traverse-path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.path-index {
+  background: var(--tech-blue);
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 4px;
+}
+
+.path-arrow {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.path-node {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-shell.mini {
+  max-height: 280px;
+  overflow-y: auto;
 }

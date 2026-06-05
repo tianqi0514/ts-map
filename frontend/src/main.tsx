@@ -18,6 +18,7 @@ import {
   Network,
   Plus,
   RefreshCw,
+  Route,
   Scale,
   Search,
   Settings,
@@ -26,7 +27,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-type SectionKey = "overview" | "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules" | "graph" | "versions" | "settings";
+type SectionKey = "overview" | "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules" | "graph" | "traverse" | "versions" | "settings";
 
 type Space = {
   id: string;
@@ -116,6 +117,7 @@ const sectionItems: Array<{
   { key: "scenarios", label: "场景", icon: LayoutList },
   { key: "rules", label: "规则", icon: Scale },
   { key: "graph", label: "本体图谱", icon: Network },
+  { key: "traverse", label: "图遍历", icon: Route },
   { key: "versions", label: "版本记录", icon: FileClock },
   { key: "settings", label: "设置", icon: Settings }
 ];
@@ -391,6 +393,8 @@ function App() {
           <Overview space={selectedSpace} summary={summary} data={data} onJump={setActive} />
         ) : active === "graph" ? (
           <OntologyGraph data={data} />
+        ) : active === "traverse" ? (
+          <GraphTraversalPanel spaceId={selectedSpaceId} data={data} />
         ) : active === "versions" ? (
           <VersionTable versions={data.versions} loading={loading} />
         ) : active === "settings" ? (
@@ -1081,6 +1085,277 @@ function OntologyGraph({ data }: { data: OntologyData }) {
           <p className="muted">请选择对象或关系</p>
         )}
       </aside>
+    </section>
+  );
+}
+
+type TraverseNode = {
+  id: string;
+  name: string;
+  code: string;
+  type: string;
+  status: string;
+  depth: number;
+};
+
+type TraverseEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  status: string;
+};
+
+type TraverseResult = {
+  start_node_id: string;
+  direction: string;
+  max_depth: number;
+  node_count: number;
+  edge_count: number;
+  path_count: number;
+  nodes: TraverseNode[];
+  edges: TraverseEdge[];
+  paths: string[][];
+};
+
+function GraphTraversalPanel({ spaceId, data }: { spaceId: string; data: OntologyData }) {
+  const allElements = React.useMemo(
+    () =>
+      [
+        ...data.objects,
+        ...data.properties,
+        ...data.relations,
+        ...data.actions,
+        ...data.scenarios,
+        ...data.rules,
+      ].filter((item) => item.status !== "inactive"),
+    [data]
+  );
+
+  const [startNodeId, setStartNodeId] = React.useState("");
+  const [direction, setDirection] = React.useState("both");
+  const [maxDepth, setMaxDepth] = React.useState(2);
+  const [nodeTypes, setNodeTypes] = React.useState<string[]>([]);
+  const [edgeTypeInput, setEdgeTypeInput] = React.useState("");
+  const [limit, setLimit] = React.useState(100);
+  const [loading, setLoading] = React.useState(false);
+  const [result, setResult] = React.useState<TraverseResult | null>(null);
+  const [error, setError] = React.useState("");
+
+  const nodeTypeOptions = ["object", "property", "relation", "action", "scenario", "rule"];
+
+  function execute() {
+    if (!startNodeId) {
+      setError("请选择起始节点");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    const edgeTypes = edgeTypeInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    api<TraverseResult>("/api/graph/traverse", {
+      method: "POST",
+      body: JSON.stringify({
+        start_node_id: startNodeId,
+        direction,
+        max_depth: maxDepth,
+        node_types: nodeTypes.length > 0 ? nodeTypes : null,
+        edge_types: edgeTypes.length > 0 ? edgeTypes : null,
+        limit,
+      }),
+    })
+      .then((res) => setResult(res.data))
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }
+
+  const startNode = allElements.find((item) => item.id === startNodeId);
+
+  return (
+    <section className="resource-panel">
+      <div className="traverse-layout">
+        <div className="traverse-params">
+          <h3>遍历参数</h3>
+          <label>
+            起始节点
+            <select value={startNodeId} onChange={(e) => setStartNodeId(e.target.value)}>
+              <option value="">选择起始节点...</option>
+              {allElements.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.code}) [{resourceTypeLabel(item.resource_type)}]
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            遍历方向
+            <select value={direction} onChange={(e) => setDirection(e.target.value)}>
+              <option value="both">双向 (出边 + 入边)</option>
+              <option value="outgoing">仅出边</option>
+              <option value="incoming">仅入边</option>
+            </select>
+          </label>
+          <label>
+            最大深度
+            <input
+              type="number"
+              min={1}
+              max={5}
+              value={maxDepth}
+              onChange={(e) => setMaxDepth(Math.min(5, Math.max(1, Number(e.target.value))))}
+            />
+          </label>
+          <label>
+            结果限制
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={limit}
+              onChange={(e) => setLimit(Math.min(500, Math.max(1, Number(e.target.value))))}
+            />
+          </label>
+          <label>
+            关系类型过滤（逗号分隔，如 HAS_PROPERTY,RELATES_TO）
+            <input
+              value={edgeTypeInput}
+              onChange={(e) => setEdgeTypeInput(e.target.value)}
+              placeholder="留空表示不过滤"
+            />
+          </label>
+          <div className="checkbox-group">
+            <span>节点类型过滤</span>
+            <div className="checkbox-row">
+              {nodeTypeOptions.map((type) => (
+                <label key={type} className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={nodeTypes.includes(type)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setNodeTypes((prev) => [...prev, type]);
+                      } else {
+                        setNodeTypes((prev) => prev.filter((t) => t !== type));
+                      }
+                    }}
+                  />
+                  {resourceTypeLabel(type)}
+                </label>
+              ))}
+            </div>
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <button className="primary-button" onClick={execute} disabled={loading}>
+            <Search size={16} />
+            {loading ? "遍历中..." : "开始遍历"}
+          </button>
+        </div>
+
+        <div className="traverse-result">
+          {!result && !loading && (
+            <div className="traverse-empty">
+              <Route size={48} />
+              <p>设置参数后点击「开始遍历」</p>
+              {startNode && (
+                <span>
+                  从 <strong>{startNode.name}</strong> 出发，
+                  {direction === "both" ? "双向" : direction === "outgoing" ? "出边" : "入边"}
+                  遍历，深度 {maxDepth}
+                </span>
+              )}
+            </div>
+          )}
+          {result && (
+            <>
+              <div className="traverse-stats">
+                <Metric label="节点数" value={result.node_count} />
+                <Metric label="边数" value={result.edge_count} />
+                <Metric label="路径数" value={result.path_count} />
+                <Metric label="最大深度" value={result.max_depth} />
+              </div>
+              <h4>节点 ({result.nodes.length})</h4>
+              <div className="table-shell mini">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>名称</th>
+                      <th>编码</th>
+                      <th>类型</th>
+                      <th>深度</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.nodes.map((node) => (
+                      <tr key={node.id}>
+                        <td>{node.name}</td>
+                        <td><code>{node.code}</code></td>
+                        <td>{resourceTypeLabel(node.type)}</td>
+                        <td>{node.depth}</td>
+                        <td>
+                          <span className={`status ${node.status}`}>
+                            {statusLabels[node.status] ?? node.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <h4>边 ({result.edges.length})</h4>
+              <div className="table-shell mini">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>源节点</th>
+                      <th>关系类型</th>
+                      <th>目标节点</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.edges.map((edge) => {
+                      const source = result.nodes.find((n) => n.id === edge.source);
+                      const target = result.nodes.find((n) => n.id === edge.target);
+                      return (
+                        <tr key={edge.id}>
+                          <td>{source?.name ?? edge.source.slice(0, 8)}</td>
+                          <td><code>{edge.type}</code></td>
+                          <td>{target?.name ?? edge.target.slice(0, 8)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {result.paths.length > 0 && (
+                <>
+                  <h4>路径 ({result.paths.length})</h4>
+                  <div className="traverse-paths">
+                    {result.paths.map((path, i) => (
+                      <div key={i} className="traverse-path">
+                        <span className="path-index">#{i + 1}</span>
+                        {path.map((nodeId, j) => {
+                          const node = result.nodes.find((n) => n.id === nodeId);
+                          return (
+                            <React.Fragment key={nodeId}>
+                              {j > 0 && <span className="path-arrow">→</span>}
+                              <span className="path-node" title={node?.code ?? nodeId}>
+                                {node?.name ?? nodeId.slice(0, 8)}
+                              </span>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
