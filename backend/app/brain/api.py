@@ -8,7 +8,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.brain import crud as brain_crud
@@ -669,6 +669,219 @@ def preview_single_record(
 
 
 # ── 规则引擎对话 ──
+
+# ── Brain Agent ──
+
+class BrainAgentCreatePayload(BaseModel):
+    code: str = Field(min_length=2, max_length=128)
+    name: str = Field(min_length=1, max_length=255)
+    description: str = ""
+    connector_id: str | None = None
+    space_id: str | None = None
+    strategy_type: str = "rule_based"
+    strategy_config: dict[str, Any] = Field(default_factory=dict)
+    status: str = "active"
+
+
+@router.get("/agents")
+def list_agents(
+    keyword: str = "",
+    status: str = "",
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    agents = brain_crud.list_agents(db, keyword, status)
+    return ApiResponse(data=[brain_crud.serialize_agent(a) for a in agents])
+
+
+@router.post("/agents")
+def create_agent(
+    payload: BrainAgentCreatePayload,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    from app.brain.schemas import BrainAgentCreate
+    agent = brain_crud.create_agent(
+        db,
+        BrainAgentCreate(
+            code=payload.code,
+            name=payload.name,
+            description=payload.description,
+            connector_id=payload.connector_id,
+            space_id=payload.space_id,
+            strategy_type=payload.strategy_type,
+            strategy_config=payload.strategy_config,
+            status=payload.status,
+        ),
+    )
+    return ApiResponse(data=brain_crud.serialize_agent(agent))
+
+
+@router.get("/agents/{agent_id}")
+def get_agent(agent_id: str, db: Session = Depends(get_db)) -> ApiResponse:
+    agent = brain_crud.get_agent(db, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return ApiResponse(data=brain_crud.serialize_agent(agent))
+
+
+@router.put("/agents/{agent_id}")
+def update_agent(
+    agent_id: str,
+    payload: BrainAgentUpdatePayload,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    from app.brain.schemas import BrainAgentUpdate
+    agent = brain_crud.update_agent(
+        db, agent_id,
+        BrainAgentUpdate(**payload.model_dump(exclude_unset=True))
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return ApiResponse(data=brain_crud.serialize_agent(agent))
+
+
+@router.delete("/agents/{agent_id}")
+def delete_agent(agent_id: str, db: Session = Depends(get_db)) -> ApiResponse:
+    success = brain_crud.delete_agent(db, agent_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return ApiResponse(data={"deleted": True})
+
+
+# ── Agent 执行 ──
+
+class AgentExecutePayload(BaseModel):
+    agent_id: str
+
+
+@router.post("/agents/{agent_id}/execute")
+def execute_agent(
+    agent_id: str,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """
+    执行 Agent：
+    1. 获取 Agent 配置（连接器 + 空间 + 策略）
+    2. 从连接器生成合成数据
+    3. 根据策略类型执行
+       - rule_based: 执行规则引擎，使用 strategy_config 中的 rule_ids 过滤
+       - natural_language: LLM 根据描述自主判断
+    4. 返回执行结果
+    """
+    agent = brain_crud.get_agent(db, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # 获取连接器
+    connector = brain_crud.get_connector(db, agent.connector_id) if agent.connector_id else None
+    if not connector:
+        return ApiResponse(data={"error": "Agent 未配置数据源连接器"})
+
+    # 获取空间
+    if not agent.space_id:
+        return ApiResponse(data={"error": "Agent 未配置本体空间"})
+
+    # 1. 生成合成数据
+    preview = generate_preview(db, agent.connector_id, count=1)
+    test_data = preview["records"][0] if preview["records"] else {}
+
+    # 2. 根据策略执行
+    if agent.strategy_type == "natural_language":
+        # 自然语言策略：LLM 自主判断
+        desc = agent.strategy_config.get("description", "")
+        client = LLMClient()
+        if client.is_available() and desc:
+            # 获取规则列表供 LLM 参考
+            from app.models import ElementStatus, OntologyElement
+            rules = (
+                db.query(OntologyElement)
+                .filter(
+                    OntologyElement.space_id == agent.space_id,
+                    OntologyElement.resource_type == "rule",
+                    OntologyElement.status == ElementStatus.active,
+                )
+                .all()
+            )
+            rules_text = "\n".join([
+                f"- {r.name}: {r.payload.get('condition', '')} -> {r.payload.get('result', '')}"
+                for r in rules[:15]
+            ])
+
+            system_prompt = f"""你是一个企业审核 Agent。
+审核要求：{desc}
+
+系统规则（供参考）：
+{rules_text}
+
+输入数据：
+{json.dumps(test_data, ensure_ascii=False, indent=2)}
+
+请根据审核要求和规则，给出审核结论。输出格式：
+{{
+  "conclusion": "通过/建议/阻断",
+  "summary": "审核结论摘要",
+  "findings": ["发现1", "发现2"],
+  "suggestions": ["建议1", "建议2"]
+}}"""
+
+            llm_result = client.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                ],
+                json_mode=True,
+            )
+            try:
+                llm_output = json.loads(llm_result["content"])
+            except json.JSONDecodeError:
+                llm_output = {"conclusion": "未知", "summary": llm_result["content"][:200]}
+
+            result = {
+                "agent_id": agent_id,
+                "agent_name": agent.name,
+                "strategy": "natural_language",
+                "test_data": test_data,
+                "llm_output": llm_output,
+                "llm_model": llm_result.get("model", ""),
+            }
+        else:
+            # LLM 不可用， fallback 到规则引擎
+            engine = RuleEngine(db)
+            rule_result = engine.execute(space_id=agent.space_id, data=test_data)
+            result = {
+                "agent_id": agent_id,
+                "agent_name": agent.name,
+                "strategy": "rule_based_fallback",
+                "test_data": test_data,
+                "rule_result": rule_result,
+            }
+    else:
+        # 规则策略
+        engine = RuleEngine(db)
+        rule_ids = agent.strategy_config.get("rule_ids")
+        rule_result = engine.execute(
+            space_id=agent.space_id,
+            data=test_data,
+            rule_ids=rule_ids if rule_ids else None,
+        )
+        result = {
+            "agent_id": agent_id,
+            "agent_name": agent.name,
+            "strategy": "rule_based",
+            "test_data": test_data,
+            "rule_result": rule_result,
+        }
+
+    return ApiResponse(data=result)
+
+
+class BrainAgentUpdatePayload(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    connector_id: str | None = None
+    space_id: str | None = None
+    strategy_type: str | None = None
+    strategy_config: dict[str, Any] | None = None
+    status: str | None = None
+
 
 class RuleEngineChatPayload(BaseModel):
     space_id: str

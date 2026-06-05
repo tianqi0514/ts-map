@@ -101,3 +101,58 @@ class RuleExecution(Base):
     trace: Mapped[list] = mapped_column(JSONB, default=list)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class BrainAgent(Base):
+    """审核 Agent 配置"""
+
+    __tablename__ = "brain_agents"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default", index=True)
+    code: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+
+    # 关联连接器（数据源）
+    connector_id: Mapped[str | None] = mapped_column(
+        ForeignKey("brain_api_connectors.id"), nullable=True
+    )
+
+    # 关联本体空间（规则来源）
+    space_id: Mapped[str | None] = mapped_column(
+        ForeignKey("ontology_spaces.id"), nullable=True
+    )
+
+    # 策略类型：rule_based | natural_language
+    strategy_type: Mapped[str] = mapped_column(String(32), default="rule_based")
+
+    # 策略配置
+    # rule_based: { rule_ids: [...], auto_execute: true }
+    # natural_language: { description: "...", temperature: 0.3 }
+    strategy_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_agent_tenant_code"),)
+
+
+class AgentExecution(Base):
+    """Agent 执行记录"""
+
+    __tablename__ = "brain_agent_executions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(64), default="default", index=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("brain_agents.id"), nullable=False, index=True)
+
+    # 输入数据
+    input_data: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    # 执行结果
+    result: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(32), default="success")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

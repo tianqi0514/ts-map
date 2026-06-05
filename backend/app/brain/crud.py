@@ -8,10 +8,12 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.brain.models import ApiConnector, DataMapping, RuleExecution
+from app.brain.models import ApiConnector, BrainAgent, DataMapping, RuleExecution
 from app.brain.schemas import (
     ApiConnectorCreate,
     ApiConnectorUpdate,
+    BrainAgentCreate,
+    BrainAgentUpdate,
     DataMappingCreate,
     DataMappingUpdate,
 )
@@ -219,4 +221,79 @@ def serialize_execution(execution: RuleExecution) -> dict[str, Any]:
         "suggest_count": execution.suggest_count,
         "trace": execution.trace,
         "created_at": execution.created_at.isoformat() if execution.created_at else None,
+    }
+
+
+# ── Brain Agent ──
+
+def create_agent(db: Session, payload: BrainAgentCreate) -> BrainAgent:
+    agent = BrainAgent(
+        code=payload.code,
+        name=payload.name,
+        description=payload.description,
+        connector_id=payload.connector_id,
+        space_id=payload.space_id,
+        strategy_type=payload.strategy_type,
+        strategy_config=payload.strategy_config,
+        status=payload.status,
+    )
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+
+def get_agent(db: Session, agent_id: str) -> BrainAgent | None:
+    return db.get(BrainAgent, agent_id)
+
+
+def list_agents(db: Session, keyword: str = "", status: str = "") -> list[BrainAgent]:
+    query = db.query(BrainAgent)
+    if keyword:
+        query = query.filter(
+            (BrainAgent.name.ilike(f"%{keyword}%"))
+            | (BrainAgent.code.ilike(f"%{keyword}%"))
+        )
+    if status:
+        query = query.filter(BrainAgent.status == status)
+    return query.order_by(BrainAgent.created_at.desc()).all()
+
+
+def update_agent(
+    db: Session, agent_id: str, payload: BrainAgentUpdate
+) -> BrainAgent | None:
+    agent = db.get(BrainAgent, agent_id)
+    if not agent:
+        return None
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(agent, field, value)
+
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+
+def delete_agent(db: Session, agent_id: str) -> bool:
+    agent = db.get(BrainAgent, agent_id)
+    if not agent:
+        return False
+    db.delete(agent)
+    db.commit()
+    return True
+
+
+def serialize_agent(agent: BrainAgent) -> dict[str, Any]:
+    return {
+        "id": agent.id,
+        "code": agent.code,
+        "name": agent.name,
+        "description": agent.description,
+        "connector_id": agent.connector_id,
+        "space_id": agent.space_id,
+        "strategy_type": agent.strategy_type,
+        "strategy_config": agent.strategy_config,
+        "status": agent.status,
+        "created_at": agent.created_at.isoformat() if agent.created_at else None,
+        "updated_at": agent.updated_at.isoformat() if agent.updated_at else None,
     }

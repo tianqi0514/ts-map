@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowLeft,
   BookOpen,
+  Bot,
   Boxes,
   BrainCircuit,
   CircleDot,
@@ -166,6 +167,7 @@ function App() {
   const [showImportYaml, setShowImportYaml] = React.useState(false);
   const [importStatus, setImportStatus] = React.useState<string>("");
   const [activeModule, setActiveModule] = React.useState<"zhishen" | "brain" | "config">("zhishen");
+  const [brainTab, setBrainTab] = React.useState<"connectors" | "agents" | "rule-engine" | "executions">("agents");
 
   const selectedSpace = spaces.find((space) => space.id === selectedSpaceId);
 
@@ -382,18 +384,34 @@ function App() {
           ) : activeModule === "brain" ? (
             <>
               <div className="nav-divider">传神智脑</div>
-              <div className="nav-item" style={{ cursor: "default", opacity: 0.7 }}>
+              <button
+                className={brainTab === "agents" ? "nav-item active" : "nav-item"}
+                onClick={() => setBrainTab("agents")}
+              >
+                <Bot size={17} />
+                <span>Agent 管理</span>
+              </button>
+              <button
+                className={brainTab === "connectors" ? "nav-item active" : "nav-item"}
+                onClick={() => setBrainTab("connectors")}
+              >
                 <BrainCircuit size={17} />
-                <span>业务数据连接器</span>
-              </div>
-              <div className="nav-item" style={{ cursor: "default", opacity: 0.7 }}>
+                <span>API 连接器</span>
+              </button>
+              <button
+                className={brainTab === "rule-engine" ? "nav-item active" : "nav-item"}
+                onClick={() => setBrainTab("rule-engine")}
+              >
                 <Scale size={17} />
-                <span>规则引擎执行</span>
-              </div>
-              <div className="nav-item" style={{ cursor: "default", opacity: 0.7 }}>
+                <span>规则引擎</span>
+              </button>
+              <button
+                className={brainTab === "executions" ? "nav-item active" : "nav-item"}
+                onClick={() => setBrainTab("executions")}
+              >
                 <FileClock size={17} />
-                <span>推理轨迹记录</span>
-              </div>
+                <span>执行历史</span>
+              </button>
             </>
           ) : (
             <>
@@ -412,7 +430,7 @@ function App() {
           <div>
             <p className="crumb">
               {activeModule === "brain"
-                ? "智脑 / 业务数据连接器与规则引擎"
+                ? `智脑 / ${brainTab === "agents" ? "Agent 管理" : brainTab === "connectors" ? "API 连接器" : brainTab === "rule-engine" ? "规则引擎" : "执行历史"}`
                 : activeModule === "config"
                   ? "配置 / LLM 与系统设置"
                   : selectedSpace
@@ -421,7 +439,13 @@ function App() {
             </p>
             <h1>
               {activeModule === "brain"
-                ? "传神智脑"
+                ? brainTab === "agents"
+                  ? "Agent 管理"
+                  : brainTab === "connectors"
+                    ? "API 连接器"
+                    : brainTab === "rule-engine"
+                      ? "规则引擎"
+                      : "执行历史"
                 : activeModule === "config"
                   ? "系统配置"
                   : selectedSpace
@@ -450,7 +474,7 @@ function App() {
         </header>
 
         {activeModule === "brain" ? (
-          <BrainModule spaces={spaces} />
+          <BrainModule spaces={spaces} activeTab={brainTab} />
         ) : activeModule === "config" ? (
           <ConfigPanel />
         ) : !selectedSpace ? (

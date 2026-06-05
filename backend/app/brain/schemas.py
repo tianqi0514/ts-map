@@ -147,3 +147,60 @@ class RuleExecutionRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Brain Agent ──
+
+class BrainAgentCreate(BaseModel):
+    code: str = Field(min_length=2, max_length=128)
+    name: str = Field(min_length=1, max_length=255)
+    description: str = ""
+    connector_id: str | None = None
+    space_id: str | None = None
+    strategy_type: str = "rule_based"  # rule_based | natural_language
+    strategy_config: dict[str, Any] = Field(default_factory=dict)
+    status: str = "active"
+
+
+class BrainAgentUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    connector_id: str | None = None
+    space_id: str | None = None
+    strategy_type: str | None = None
+    strategy_config: dict[str, Any] | None = None
+    status: str | None = None
+
+
+class BrainAgentRead(BaseModel):
+    id: str
+    code: str
+    name: str
+    description: str
+    connector_id: str | None
+    space_id: str | None
+    strategy_type: str
+    strategy_config: dict[str, Any]
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Agent 执行 ──
+
+class AgentExecutionCreate(BaseModel):
+    agent_id: str
+    input_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentExecutionRead(BaseModel):
+    id: str
+    agent_id: str
+    input_data: dict[str, Any]
+    result: dict[str, Any]
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
