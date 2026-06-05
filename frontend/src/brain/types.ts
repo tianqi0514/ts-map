@@ -61,14 +61,60 @@ export type RuleHitResult = {
   reasoning: Array<Record<string, unknown>>;
 };
 
+export type MissedRule = {
+  rule_id: string;
+  rule_code: string;
+  rule_name: string;
+  rule_type: string;
+  priority: number;
+  condition: string;
+  matched: boolean;
+  result: string;
+  severity: string;
+  reasoning: Array<Record<string, unknown>>;
+};
+
 export type RuleEngineResult = {
   space_id: string;
   input_data: Record<string, unknown>;
   total_rules: number;
   hit_count: number;
   block_count: number;
+  miss_count: number;
   hits: RuleHitResult[];
+  misses: MissedRule[];
+  all_rules: Array<{
+    rule_id: string;
+    rule_code: string;
+    rule_name: string;
+    rule_type: string;
+    priority: number;
+    condition: string;
+    result: string;
+  }>;
   execution_time_ms: number;
+};
+
+export type ExecutionContext = {
+  execution: {
+    timestamp: string;
+    mode: "connector" | "nl" | "manual";
+    spaceId: string;
+    spaceName: string;
+    executionTimeMs: number;
+  };
+  input: {
+    testData: Record<string, unknown>;
+    source: string;
+    sourceDetail?: string;
+  };
+  result: RuleEngineResult;
+};
+
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
 };
 
 export type RuleExecutionRecord = {

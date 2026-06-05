@@ -646,3 +646,123 @@ def nl_simple_rule_test(
         "llm_model": result.get("model", ""),
         "rule_result": rule_result,
     })
+
+
+# ── 连接器生成单条合成数据 ──
+
+@router.post("/connectors/{connector_id}/preview-single")
+def preview_single_record(
+    connector_id: str,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """生成单条合成数据（用于规则引擎测试）"""
+    connector = brain_crud.get_connector(db, connector_id)
+    if not connector:
+        raise HTTPException(status_code=404, detail="Connector not found")
+
+    result = generate_preview(db, connector_id, count=1)
+    return ApiResponse(data={
+        "connector_id": connector_id,
+        "connector_name": connector.name,
+        "record": result["records"][0] if result["records"] else {},
+    })
+
+
+# ── 规则引擎对话 ──
+
+class RuleEngineChatPayload(BaseModel):
+    space_id: str
+    space_name: str
+    test_data: dict[str, Any]
+    data_source: str
+    hits: list[dict[str, Any]]
+    misses: list[dict[str, Any]]
+    all_rules: list[dict[str, Any]]
+    execution_time_ms: float
+    question: str
+    history: list[dict[str, str]] = []
+
+
+@router.post("/rule-engine/chat")
+def rule_engine_chat(
+    payload: RuleEngineChatPayload,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """
+    基于规则引擎执行上下文进行对话。
+    大模型必须基于提供的上下文回答，不能编造信息。
+    """
+    client = LLMClient()
+    if not client.is_available():
+        return ApiResponse(data={
+            "error": "LLM 未配置，请在系统配置中检查 LLM 设置",
+            "llm_available": False,
+        })
+
+    # 构建命中规则摘要
+    hit_summary = "\n".join([
+        f"- {h['rule_name']} ({h['rule_type']}, P{h['priority']}): "
+        f"条件「{h['condition']}」→ 结果「{h['result']}」"
+        for h in payload.hits[:20]
+    ]) if payload.hits else "无"
+
+    # 构建未命中规则摘要
+    miss_summary = "\n".join([
+        f"- {m['rule_name']} ({m['rule_type']}, P{m['priority']}): "
+        f"条件「{m['condition']}」→ 未命中"
+        for m in payload.misses[:20]
+    ]) if payload.misses else "无"
+
+    # 构建全部规则摘要
+    all_rules_summary = "\n".join([
+        f"- {r['rule_name']} ({r['rule_type']}, P{r['priority']}): {r['condition']}"
+        for r in payload.all_rules[:30]
+    ])
+
+    system_prompt = f"""你是一个企业规则引擎分析助手。你的回答**必须**基于以下执行上下文，**绝对不能编造**任何规则或数据。
+
+【执行上下文】
+- 本体空间：{payload.space_name}
+- 数据来源：{payload.data_source}
+- 执行耗时：{payload.execution_time_ms}ms
+
+【输入测试数据】
+```json
+{json.dumps(payload.test_data, ensure_ascii=False, indent=2)}
+```
+
+【全部规则（共 {len(payload.all_rules)} 条）】
+{all_rules_summary}
+
+【命中规则（共 {len(payload.hits)} 条）】
+{hit_summary}
+
+【未命中规则（共 {len(payload.misses)} 条）】
+{miss_summary}
+
+【回答要求】
+1. **只基于以上上下文回答**，不要编造不存在的规则或数据
+2. 如果用户问的是上下文中**没有**的信息，明确说"根据当前执行上下文，我无法回答这个问题"
+3. 解释规则命中原因时，**引用具体的条件表达式和实际数据值**
+4. 如果用户问"修改某字段会怎样"，基于规则条件做逻辑推理，但不要假设规则不存在
+5. 用中文回答，简洁专业"""
+
+    messages = [{"role": "system", "content": system_prompt}]
+
+    # 添加历史对话
+    for msg in payload.history[-6:]:  # 只保留最近 6 轮
+        messages.append({"role": msg["role"], "content": msg["content"]})
+
+    messages.append({"role": "user", "content": payload.question})
+
+    try:
+        result = client.chat(messages=messages)
+        return ApiResponse(data={
+            "answer": result["content"],
+            "model": result["model"],
+            "usage": result["usage"],
+        })
+    except Exception as e:
+        return ApiResponse(data={
+            "error": f"LLM 调用失败: {str(e)}",
+        })

@@ -410,7 +410,9 @@ class RuleEngine:
 
         evaluator = RuleConditionEvaluator(data)
         hits = []
+        misses = []
         block_count = 0
+        all_rules = []
 
         for rule in rules:
             payload = rule.payload or {}
@@ -418,6 +420,17 @@ class RuleEngine:
             result_text = payload.get("result", "") or payload.get("then", "")
             rule_type = payload.get("rule_type", "硬规则")
             priority = payload.get("priority", 0)
+
+            # 记录所有规则（用于上下文）
+            all_rules.append({
+                "rule_id": rule.id,
+                "rule_code": rule.code,
+                "rule_name": rule.name,
+                "rule_type": rule_type,
+                "priority": priority,
+                "condition": condition,
+                "result": result_text,
+            })
 
             if not condition:
                 continue
@@ -441,6 +454,19 @@ class RuleEngine:
                     "severity": severity,
                     "reasoning": reasoning,
                 })
+            else:
+                misses.append({
+                    "rule_id": rule.id,
+                    "rule_code": rule.code,
+                    "rule_name": rule.name,
+                    "rule_type": rule_type,
+                    "priority": priority,
+                    "condition": condition,
+                    "matched": False,
+                    "result": result_text,
+                    "severity": "block" if rule_type == "硬规则" else "suggest",
+                    "reasoning": reasoning,
+                })
 
         execution_time = (time.time() - start_time) * 1000
 
@@ -450,6 +476,9 @@ class RuleEngine:
             "total_rules": len(rules),
             "hit_count": len(hits),
             "block_count": block_count,
+            "miss_count": len(misses),
             "hits": hits,
+            "misses": misses,
+            "all_rules": all_rules,
             "execution_time_ms": round(execution_time, 2),
         }
