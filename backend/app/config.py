@@ -10,6 +10,12 @@ class Settings(BaseSettings):
     neo4j_password: str = "password123"
     backend_cors_origins: str = "http://localhost:9001"
 
+    # LLM 配置
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_model: str = "gpt-4o-mini"
+    llm_temperature: float = 0.3
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @property

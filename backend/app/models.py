@@ -8,6 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
+# Import brain models so they are registered with Base.metadata
+from app.brain.models import ApiConnector, DataMapping, RuleExecution  # noqa: F401
+
 
 def new_id() -> str:
     return uuid4().hex

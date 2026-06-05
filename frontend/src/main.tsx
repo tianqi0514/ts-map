@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   BookOpen,
   Boxes,
+  BrainCircuit,
   CircleDot,
   Copy,
   Database,
@@ -26,6 +27,7 @@ import {
   WandSparkles
 } from "lucide-react";
 import "./styles.css";
+import BrainModule from "./brain";
 
 type SectionKey = "overview" | "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules" | "graph" | "traverse" | "versions" | "settings";
 
@@ -163,6 +165,7 @@ function App() {
   const [deletingSpace, setDeletingSpace] = React.useState<Space | null>(null);
   const [showImportYaml, setShowImportYaml] = React.useState(false);
   const [importStatus, setImportStatus] = React.useState<string>("");
+  const [activeModule, setActiveModule] = React.useState<"zhishen" | "brain">("zhishen");
 
   const selectedSpace = spaces.find((space) => space.id === selectedSpaceId);
 
@@ -310,48 +313,80 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">智</div>
+          <div className="brand-mark">传</div>
           <div>
-            <strong>传神智谱</strong>
-            <span>本体管理</span>
+            <strong>传神</strong>
+            <span>智谱 / 智脑</span>
           </div>
         </div>
-        <div className="nav-root">
-          <BookOpen size={18} />
-          <span>智谱</span>
+        <div className="module-switcher">
+          <button
+            className={activeModule === "zhishen" ? "module-btn active" : "module-btn"}
+            onClick={() => setActiveModule("zhishen")}
+          >
+            <BookOpen size={16} />
+            <span>智谱</span>
+          </button>
+          <button
+            className={activeModule === "brain" ? "module-btn active" : "module-btn"}
+            onClick={() => setActiveModule("brain")}
+          >
+            <BrainCircuit size={16} />
+            <span>智脑</span>
+          </button>
         </div>
         <nav>
-          <button
-            className={!selectedSpaceId ? "nav-item active" : "nav-item"}
-            onClick={() => {
-              setSelectedSpaceId("");
-              setSelected(null);
-              setEditing(null);
-            }}
-          >
-            <Database size={17} />
-            <span>本体列表</span>
-          </button>
-          {selectedSpaceId && (
+          {activeModule === "zhishen" ? (
             <>
-              <div className="nav-divider">{selectedSpace?.name}</div>
-              {sectionItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.key}
-                    className={active === item.key ? "nav-item active" : "nav-item"}
-                    onClick={() => {
-                      setActive(item.key);
-                      setSelected(null);
-                      setEditing(null);
-                    }}
-                  >
-                    <Icon size={17} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+              <button
+                className={!selectedSpaceId ? "nav-item active" : "nav-item"}
+                onClick={() => {
+                  setSelectedSpaceId("");
+                  setSelected(null);
+                  setEditing(null);
+                }}
+              >
+                <Database size={17} />
+                <span>本体列表</span>
+              </button>
+              {selectedSpaceId && (
+                <>
+                  <div className="nav-divider">{selectedSpace?.name}</div>
+                  {sectionItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.key}
+                        className={active === item.key ? "nav-item active" : "nav-item"}
+                        onClick={() => {
+                          setActive(item.key);
+                          setSelected(null);
+                          setEditing(null);
+                        }}
+                      >
+                        <Icon size={17} />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="nav-divider">传神智脑</div>
+              <div className="nav-item" style={{ cursor: "default", opacity: 0.7 }}>
+                <BrainCircuit size={17} />
+                <span>业务数据连接器</span>
+              </div>
+              <div className="nav-item" style={{ cursor: "default", opacity: 0.7 }}>
+                <Scale size={17} />
+                <span>规则引擎执行</span>
+              </div>
+              <div className="nav-item" style={{ cursor: "default", opacity: 0.7 }}>
+                <FileClock size={17} />
+                <span>推理轨迹记录</span>
+              </div>
             </>
           )}
         </nav>
@@ -360,20 +395,34 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div>
-            <p className="crumb">{selectedSpace ? `智谱 / ${selectedSpace.name}` : "智谱 / 本体列表"}</p>
-            <h1>{selectedSpace ? activeLabel(active) : "本体列表"}</h1>
+            <p className="crumb">
+              {activeModule === "brain"
+                ? "智脑 / 业务数据连接器与规则引擎"
+                : selectedSpace
+                  ? `智谱 / ${selectedSpace.name}`
+                  : "智谱 / 本体列表"}
+            </p>
+            <h1>
+              {activeModule === "brain"
+                ? "传神智脑"
+                : selectedSpace
+                  ? activeLabel(active)
+                  : "本体列表"}
+            </h1>
           </div>
           <div className="top-actions">
-            {selectedSpace && (
+            {activeModule === "zhishen" && selectedSpace && (
               <button className="ghost-button" onClick={() => setSelectedSpaceId("")}>
                 <ArrowLeft size={16} />
                 返回本体列表
               </button>
             )}
-            <button className="ghost-button" onClick={initializeTemplate}>
-              <Database size={16} />
-              初始化验证本体
-            </button>
+            {activeModule === "zhishen" && (
+              <button className="ghost-button" onClick={initializeTemplate}>
+                <Database size={16} />
+                初始化验证本体
+              </button>
+            )}
             <span className={health?.neo4j ? "health ok" : "health warn"}>
               <CircleDot size={12} />
               Neo4j {health?.neo4j ? "已连接" : "未连接"}
@@ -381,7 +430,9 @@ function App() {
           </div>
         </header>
 
-        {!selectedSpace ? (
+        {activeModule === "brain" ? (
+          <BrainModule spaces={spaces} />
+        ) : !selectedSpace ? (
           <OntologyList
             spaces={spaces}
             onSelect={setSelectedSpaceId}
