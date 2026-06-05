@@ -22,7 +22,7 @@ docker compose up -d postgres neo4j
 ```bash
 cd backend
 uv sync
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 9000
 ```
 
 3. 启动前端:
@@ -35,12 +35,10 @@ npm run dev
 
 默认地址:
 
-- 前端: http://127.0.0.1:5173
-- 后端: http://localhost:8001
-- API 文档: http://localhost:8001/docs
-- Neo4j Browser: http://localhost:7474
-
-当前机器上如果 `localhost:5173` 命中其他旧服务，请使用 `127.0.0.1:5173`。
+- 前端: http://127.0.0.1:9001
+- 后端: http://localhost:9000
+- API 文档: http://localhost:9000/docs
+- Neo4j Browser: http://localhost:9003
 
 ## 当前一期范围
 

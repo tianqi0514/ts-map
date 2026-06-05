@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -162,7 +162,143 @@ def list_versions(space_id: str, db: Session = Depends(get_db)) -> ApiResponse:
     return ApiResponse(data=[crud.serialize_version(row) for row in rows])
 
 
+@app.delete("/api/spaces/{space_id}")
+def delete_space(space_id: str, db: Session = Depends(get_db)) -> ApiResponse:
+    """级联删除单个空间及其所有关联数据"""
+    counts = crud.delete_space(db, projector, space_id)
+    return ApiResponse(data={"deleted": counts})
+
+
 @app.post("/api/graph-sync/run")
 def run_graph_sync(db: Session = Depends(get_db)) -> ApiResponse:
     count = crud.sync_pending_tasks(db, projector)
     return ApiResponse(data={"processed": count})
+
+
+@app.post("/api/admin/import-yaml")
+def admin_import_yaml(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """从上传的 YAML 文件批量导入本体"""
+    import yaml
+    from app.models import ElementStatus
+
+    content = file.file.read().decode("utf-8")
+    data = yaml.safe_load(content)
+
+    # 创建空间
+    space_cfg = data.get("space", {})
+    from app.models import OntologySpace
+
+    existing = db.execute(
+        select(OntologySpace).where(OntologySpace.code == space_cfg.get("code"))
+    ).scalar_one_or_none()
+    if existing:
+        space = existing
+    else:
+        space = crud.create_space(
+            db,
+            SpaceCreate(
+                code=space_cfg.get("code", "imported_ontology"),
+                name=space_cfg.get("name", "导入的本体"),
+                domain=space_cfg.get("domain", "custom"),
+                description=space_cfg.get("description", ""),
+            ),
+        )
+    space_id = space.id
+
+    ontology = data.get("ontology", data)
+    created_counts: dict[str, int] = {"objects": 0, "properties": 0, "relations": 0, "actions": 0, "rules": 0}
+
+    # 创建对象
+    for code, spec in ontology.get("objects", {}).items():
+        payload = ElementCreate(
+            code=code,
+            name=spec.get("label", code),
+            description=f"{spec.get('label', code)}对象",
+            status=ElementStatus.active,
+            payload={
+                "key": spec.get("key"),
+                "fields": spec.get("fields", {}),
+            },
+            references=[],
+        )
+        crud.create_element(db, projector, space_id, "objects", payload)
+        created_counts["objects"] += 1
+
+    # 创建属性
+    for code, spec in ontology.get("objects", {}).items():
+        fields = spec.get("fields", {})
+        for field_name, field_type in fields.items():
+            prop_code = f"{code}.{field_name}"
+            payload = ElementCreate(
+                code=prop_code,
+                name=field_name,
+                description=f"{spec.get('label', code)}.{field_name}",
+                status=ElementStatus.active,
+                payload={"object_code": code, "data_type": str(field_type)},
+                references=[],
+            )
+            crud.create_element(db, projector, space_id, "properties", payload)
+            created_counts["properties"] += 1
+
+    # 创建关系
+    for link in ontology.get("links", []):
+        rel_code = link["name"]
+        to_value = link["to"]
+        to_codes = to_value if isinstance(to_value, list) else [to_value]
+        payload = ElementCreate(
+            code=rel_code,
+            name=link.get("label", rel_code),
+            description=f"{link.get('label', rel_code)}: {link['from']} -> {', '.join(to_codes)}",
+            status=ElementStatus.active,
+            payload={
+                "source_code": link["from"],
+                "target_codes": to_codes,
+                "cardinality": link.get("card"),
+                "traversable": link.get("traversable", False),
+            },
+            references=[],
+        )
+        crud.create_element(db, projector, space_id, "relations", payload)
+        created_counts["relations"] += 1
+
+    # 创建行为
+    for behavior in ontology.get("behaviors", []):
+        bcode = behavior["id"]
+        payload = ElementCreate(
+            code=bcode,
+            name=behavior.get("label", bcode),
+            description=behavior.get("effect", ""),
+            status=ElementStatus.active,
+            payload={"hook": behavior.get("hook"), "effect": behavior.get("effect"), "rules": []},
+            references=[],
+        )
+        crud.create_element(db, projector, space_id, "actions", payload)
+        created_counts["actions"] += 1
+
+    # 创建规则
+    for rule_type in ("hard", "soft"):
+        for rule in ontology.get("rules", {}).get(rule_type, []):
+            rcode = rule["id"]
+            payload = ElementCreate(
+                code=rcode,
+                name=rule.get("label", rcode),
+                description=f"{rule.get('when', '')} -> {rule.get('then', '')}",
+                status=ElementStatus.active,
+                payload={
+                    "rule_type": "硬规则" if rule_type == "hard" else "软规则",
+                    "priority": rule.get("priority"),
+                    "condition": rule.get("when"),
+                    "result": rule.get("then"),
+                },
+                references=[],
+            )
+            crud.create_element(db, projector, space_id, "rules", payload)
+            created_counts["rules"] += 1
+
+    # 触发图同步
+    crud.sync_pending_tasks(db, projector)
+
+    return ApiResponse(data={"space_id": space_id, "created": created_counts})

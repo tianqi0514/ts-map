@@ -475,3 +475,39 @@ def sync_pending_tasks(db: Session, projector: GraphProjector | None) -> int:
         run_graph_task(db, projector, task)
     db.commit()
     return len(tasks)
+
+
+def delete_space(db: Session, projector: GraphProjector | None, space_id: str) -> dict[str, int]:
+    """级联删除单个空间及其所有关联数据"""
+    space = db.get(OntologySpace, space_id)
+    if not space:
+        raise HTTPException(status_code=404, detail="Space not found")
+
+    # 统计删除数量
+    counts: dict[str, int] = {}
+
+    # 1. 删除图同步任务
+    counts["graph_sync_tasks"] = db.query(GraphSyncTask).filter(GraphSyncTask.space_id == space_id).delete(synchronize_session=False)
+
+    # 2. 删除版本记录
+    counts["version_records"] = db.query(VersionRecord).filter(VersionRecord.space_id == space_id).delete(synchronize_session=False)
+
+    # 3. 删除审计日志
+    counts["audit_logs"] = db.query(AuditLog).filter(AuditLog.space_id == space_id).delete(synchronize_session=False)
+
+    # 4. 删除引用边
+    counts["reference_edges"] = db.query(ReferenceEdge).filter(ReferenceEdge.space_id == space_id).delete(synchronize_session=False)
+
+    # 5. 删除所有本体元素
+    counts["elements"] = db.query(OntologyElement).filter(OntologyElement.space_id == space_id).delete(synchronize_session=False)
+
+    # 6. 删除空间
+    db.delete(space)
+    db.commit()
+
+    # 7. 清空 Neo4j 中该空间的节点
+    if projector and projector.is_available():
+        with projector.driver.session() as session:
+            session.run("MATCH (n:OntologyNode {space_id: $space_id}) DETACH DELETE n", {"space_id": space_id})
+
+    return counts

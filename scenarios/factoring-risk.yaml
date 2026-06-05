@@ -1,0 +1,306 @@
+# 保理业务风控本体库 v1.0 —— 供应链金融场景
+# 业务域：商业保理、应收账款融资、供应链金融风险管控
+# 覆盖：正向保理 / 反向保理（供应链金融）/ 暗保理 / 融资租赁保理
+
+space:
+  code: factoring_risk
+  name: 保理业务风控本体
+  domain: 供应链金融风控
+  description: >
+    商业保理与供应链金融风险管控本体。覆盖应收账款确权、买方信用评估、
+    融资放款审核、回款监控、逾期催收等全流程风控节点。
+
+ontology:
+  version: 1.0.0
+  domain: 供应链金融风控
+
+  objects:
+    FactoringContract:
+      label: 保理合同
+      key: fcNo
+      fields:
+        fcNo:           { type: string, required: true,  desc: "保理合同编号" }
+        contractType:   { type: "enum[正向保理|反向保理|暗保理|融资租赁保理|池保理]", required: true, desc: "保理类型" }
+        amount:         { type: money, required: true,  desc: "保理额度(元)" }
+        usedAmount:     { type: money, default: 0,     desc: "已用额度(元)" }
+        availableAmount: { type: money, default: 0,     desc: "可用额度(元)" }
+        interestRate:   { type: "decimal(0..1)", required: true, desc: "融资利率" }
+        serviceFeeRate: { type: "decimal(0..1)", required: true, desc: "服务费比例" }
+        termDays:       { type: int, required: true,  desc: "融资期限(天)" }
+        gracePeriodDays: { type: int, default: 3,     desc: "宽限期(天)" }
+        recourseType:   { type: "enum[有追索权|无追索权]", required: true, desc: "追索权类型" }
+        status:         { type: "enum[申请中|审核中|已生效|额度用尽|已终止|已结清]", required: true, desc: "合同状态" }
+        effectiveDate:  { type: date, required: true,  desc: "生效日期" }
+        expiryDate:     { type: date, required: true,  desc: "到期日期" }
+        autoRenew:      { type: bool, default: false, desc: "自动续期" }
+
+    Receivable:
+      label: 应收账款
+      key: arNo
+      fields:
+        arNo:           { type: string, required: true,  desc: "账款编号" }
+        baseContractNo: { type: string, required: true,  desc: "基础合同编号" }
+        invoiceNo:      { type: string, required: true,  desc: "发票编号" }
+        invoiceAmount:  { type: money, required: true,  desc: "发票金额" }
+        financedAmount: { type: money, default: 0,     desc: "已融资金额" }
+        invoiceDate:    { type: date, required: true,  desc: "发票日期" }
+        dueDate:        { type: date, required: true,  desc: "应收账款到期日" }
+        paymentTerms:   { type: int, required: true,  desc: "账期(天)" }
+        goodsDesc:      { type: text, required: false, desc: "货物/服务描述" }
+        confirmationStatus: { type: "enum[待确权|已确权|确权被拒绝|部分确权]", default: "待确权", desc: "确权状态" }
+        transferStatus: { type: "enum[可转让|已转让|已回款|逾期|争议中]", default: "可转让", desc: "转让状态" }
+        agingBucket:    { type: "enum[当前|1-30天|31-60天|61-90天|90天以上]", required: false, desc: "账龄分段" }
+
+    Seller:
+      label: 卖方（融资方）
+      key: sellerId
+      fields:
+        sellerId:       { type: string, required: true,  desc: "卖方编号" }
+        name:           { type: string, required: true,  desc: "企业名称" }
+        creditScore:    { type: "int(0..100)", required: false, desc: "信用评分" }
+        creditLimit:    { type: money, required: false, desc: "授信额度" }
+        regCapital:     { type: money, required: false, desc: "注册资本" }
+        annualRevenue:  { type: money, required: false, desc: "年营收" }
+        debtRatio:      { type: "decimal(0..1)", required: false, desc: "资产负债率" }
+        operatingYears: { type: int, required: false, desc: "经营年限" }
+        industry:       { type: string, required: false, desc: "所属行业" }
+        blacklistFlag:  { type: bool, default: false, desc: "黑名单标记" }
+        watchlistFlag:  { type: bool, default: false, desc: "观察名单标记" }
+        kycStatus:      { type: "enum[未认证|认证中|已认证|认证过期]", required: true, desc: "KYC状态" }
+        taxCompliance:  { type: "enum[合规|异常|欠税]", default: "合规", desc: "税务合规状态" }
+
+    Buyer:
+      label: 买方（付款方）
+      key: buyerId
+      fields:
+        buyerId:        { type: string, required: true,  desc: "买方编号" }
+        name:           { type: string, required: true,  desc: "企业名称" }
+        creditRating:   { type: "enum[AAA|AA|A|BBB|BB|B|CCC|D]", required: false, desc: "信用评级" }
+        creditLimit:    { type: money, required: false, desc: "买方授信额度" }
+        paymentHistory: { type: "decimal(0..1)", required: false, desc: "历史付款准时率" }
+        avgPaymentDays: { type: int, required: false, desc: "平均付款天数" }
+        defaultCount12m: { type: int, default: 0,     desc: "近12月违约次数" }
+        outstandingAR:  { type: money, default: 0,     desc: "未结清应付总额" }
+        industryRisk:   { type: "enum[低|中|高]", default: "中", desc: "行业风险等级" }
+        isCoreEnterprise: { type: bool, default: false, desc: "是否核心企业" }
+        groupGuarantee: { type: bool, default: false, desc: "是否有集团担保" }
+
+    FinancingApplication:
+      label: 融资申请
+      key: appNo
+      fields:
+        appNo:          { type: string, required: true,  desc: "申请编号" }
+        applyAmount:    { type: money, required: true,  desc: "申请金额" }
+        applyDate:      { type: date, required: true,  desc: "申请日期" }
+        expectedDate:   { type: date, required: true,  desc: "期望放款日" }
+        financingRatio: { type: "decimal(0..1)", required: true, desc: "融资比例" }
+        purpose:        { type: string, required: false, desc: "资金用途" }
+        status:         { type: "enum[草稿|已提交|初审中|风控审核中|审批中|已通过|已拒绝|已放款]", required: true, desc: "申请状态" }
+        riskScore:      { type: "int(0..100)", required: false, desc: "系统风控评分" }
+        manualOverride: { type: bool, default: false, desc: "是否人工覆写" }
+        overrideReason: { type: text, required: false, desc: "覆写原因" }
+
+    Disbursement:
+      label: 放款记录
+      key: disbNo
+      fields:
+        disbNo:         { type: string, required: true,  desc: "放款编号" }
+        amount:         { type: money, required: true,  desc: "放款金额" }
+        disbDate:       { type: date, required: true,  desc: "放款日期" }
+        interestAccrued: { type: money, default: 0,     desc: "累计利息" }
+        feeCharged:     { type: money, default: 0,     desc: "已收服务费" }
+        status:         { type: "enum[正常|逾期|催收中|核销|已结清]", required: true, desc: "状态" }
+        maturityDate:   { type: date, required: true,  desc: "到期日" }
+
+    Repayment:
+      label: 回款记录
+      key: repayNo
+      fields:
+        repayNo:        { type: string, required: true,  desc: "回款编号" }
+        amount:         { type: money, required: true,  desc: "回款金额" }
+        principal:      { type: money, required: true,  desc: "本金" }
+        interest:       { type: money, required: true,  desc: "利息" }
+        penalty:        { type: money, default: 0,     desc: "罚息" }
+        repayDate:      { type: date, required: true,  desc: "回款日期" }
+        source:         { type: "enum[买方付款|卖方代偿|担保代偿|资产处置|其他]", required: true, desc: "回款来源" }
+        daysOverdue:    { type: int, default: 0,     desc: "逾期天数" }
+
+    Guarantee:
+      label: 担保/增信
+      key: guaNo
+      fields:
+        guaNo:          { type: string, required: true,  desc: "担保编号" }
+        guaType:        { type: "enum[保证|抵押|质押|保证金|保险|信用保险]", required: true, desc: "担保类型" }
+        guarantor:      { type: ref, required: true, desc: "担保方" }
+        coverageAmount: { type: money, required: true,  desc: "担保金额" }
+        coverageRatio:  { type: "decimal(0..1)", required: true, desc: "担保覆盖率" }
+        validFrom:      { type: date, required: true,  desc: "有效期起" }
+        validTo:        { type: date, required: true,  desc: "有效期止" }
+        status:         { type: "enum[有效|已触发|已解除|已过期]", required: true, desc: "状态" }
+
+    RiskEvent:
+      label: 风险事件
+      key: evtNo
+      fields:
+        evtNo:          { type: string, required: true,  desc: "事件编号" }
+        evtType:        { type: "enum[买方违约|卖方欺诈|账款争议|重复融资|虚假贸易|行业下行|政策变化|系统异常]", required: true, desc: "事件类型" }
+        severity:       { type: "enum[低|中|高|致命]", required: true, desc: "严重级别" }
+        description:    { type: text, required: true,  desc: "事件描述" }
+        detectedAt:     { type: date, required: true,  desc: "发现时间" }
+        resolvedAt:     { type: date, required: false, desc: "解决时间" }
+        lossEstimate:   { type: money, required: false, desc: "预估损失" }
+        actionTaken:    { type: text, required: false, desc: "已采取措施" }
+
+    Pool:
+      label: 资产池
+      key: poolNo
+      fields:
+        poolNo:         { type: string, required: true,  desc: "池编号" }
+        poolType:       { type: "enum[静态池|动态池]", required: true, desc: "池类型" }
+        totalAR:        { type: money, required: true,  desc: "池内应收账款总额" }
+        arCount:        { type: int, required: true,  desc: "账款笔数" }
+        avgARAmount:    { type: money, required: false, desc: "平均账款金额" }
+        avgPaymentTerms: { type: int, required: false, desc: "平均账期" }
+        concentrationRatio: { type: "decimal(0..1)", required: false, desc: "集中度(最大买方占比)" }
+        status:         { type: "enum[组建中|开放|冻结|清算]", required: true, desc: "状态" }
+
+  links:
+    # 保理合同 ↔ 参与方
+    - { name: coversSeller,     label: 覆盖卖方,   from: FactoringContract, to: Seller, card: 1-1, traversable: false }
+    - { name: coversBuyer,      label: 覆盖买方,   from: FactoringContract, to: Buyer, card: 1-n, traversable: true }
+    - { name: hasApplication,   label: 融资申请,   from: FactoringContract, to: FinancingApplication, card: 1-n, traversable: false }
+
+    # 应收账款链路
+    - { name: assignedTo,       label: 转让予,     from: Receivable, to: FactoringContract, card: n-1, traversable: false }
+    - { name: issuedBySeller,   label: 卖方开票,   from: Receivable, to: Seller, card: n-1, traversable: false }
+    - { name: payableByBuyer,   label: 买方应付,   from: Receivable, to: Buyer, card: n-1, traversable: true }
+    - { name: pooledIn,         label: 入池,       from: Receivable, to: Pool, card: n-1, traversable: false }
+
+    # 融资申请 → 放款
+    - { name: resultsIn,        label: 产生放款,   from: FinancingApplication, to: Disbursement, card: 1-n, traversable: false }
+
+    # 放款 → 回款
+    - { name: repaidBy,         label: 回款清偿,   from: Disbursement, to: Repayment, card: 1-n, traversable: false }
+
+    # 担保
+    - { name: securedByGua,     label: 担保覆盖,   from: FactoringContract, to: Guarantee, card: 1-n, traversable: false }
+    - { name: guaranteedFor,    label: 担保对象,   from: Guarantee, to: Seller, card: n-1, traversable: false }
+
+    # 风险事件
+    - { name: triggersRisk,     label: 触发风险,   from: Buyer, to: RiskEvent, card: 1-n, traversable: true }
+    - { name: affectedByRisk,   label: 受影响,     from: FactoringContract, to: RiskEvent, card: 1-n, traversable: false }
+
+  rules:
+    hard:
+      # 主体资质否决
+      - { id: SellerBlacklistVeto,        label: 卖方黑名单否决,     when: "seller.blacklistFlag == true", then: Veto, priority: 200 }
+      - { id: SellerKycExpiredVeto,       label: KYC过期否决,        when: "seller.kycStatus == 认证过期", then: Veto, priority: 195 }
+      - { id: BuyerCreditDVeto,           label: 买方信用D级否决,    when: "buyer.creditRating == D", then: Veto, priority: 190 }
+      - { id: BuyerDefault3TimesVeto,     label: 买方近12月违约3次,  when: "buyer.defaultCount12m >= 3", then: Veto, priority: 185 }
+      - { id: TaxNonComplianceVeto,       label: 税务异常否决,       when: "seller.taxCompliance in [异常|欠税]", then: Veto, priority: 180 }
+
+      # 账款合规否决
+      - { id: ARNotConfirmedVeto,         label: 账款未确权否决,     when: "receivable.confirmationStatus != 已确权", then: Veto, priority: 175 }
+      - { id: ARAlreadyTransferredVeto,   label: 账款已转让否决,     when: "receivable.transferStatus == 已转让", then: Veto, priority: 173 }
+      - { id: DuplicateFinancingVeto,     label: 重复融资否决,       when: "receivable.financedAmount > 0 and applyAmount > receivable.invoiceAmount - receivable.financedAmount", then: Veto, priority: 170 }
+      - { id: FakeTradeVeto,              label: 虚假贸易否决,       when: "goodsDesc is null or length(goodsDesc) < 10 or invoiceDate > today()", then: Veto, priority: 165 }
+
+      # 额度风控否决
+      - { id: ExceedCreditLimitVeto,      label: 超授信额度否决,     when: "applyAmount > seller.creditLimit - seller.usedAmount", then: Veto, priority: 160 }
+      - { id: ExceedBuyerLimitVeto,       label: 超买方额度否决,     when: "applyAmount > buyer.creditLimit - buyer.outstandingAR", then: Veto, priority: 158 }
+      - { id: ExceedPoolConcentrationVeto,label: 集中度超标否决,     when: "pool.concentrationRatio > 0.3", then: Veto, priority: 155 }
+
+      # 合同条款否决
+      - { id: NonRecourseNoBuyerCreditVeto, label: 无追索缺买方信用, when: "factoringContract.recourseType == 无追索权 and buyer.creditRating in [B|CCC|D]", then: Veto, priority: 150 }
+      - { id: HighRatioNoGuaranteeVeto,    label: 高比例缺担保否决,  when: "application.financingRatio > 0.9 and not exists guarantee(status=有效)", then: Veto, priority: 145 }
+
+    soft:
+      - { id: HighDebtRatioWarning,       label: 卖方负债率过高,     when: "seller.debtRatio > 0.7", then: RaiseRiskFinding(中), priority: 80 }
+      - { id: BuyerPaymentSlowWarning,    label: 买方付款偏慢,       when: "buyer.avgPaymentDays > receivable.paymentTerms * 1.5", then: RaiseRiskFinding(中), priority: 75 }
+      - { id: SellerOperatingShortWarning,label: 卖方经营年限短,     when: "seller.operatingYears < 3", then: RaiseRiskFinding(低), priority: 70 }
+      - { id: BuyerNotCoreWarning,        label: 买方非核心企业,     when: "buyer.isCoreEnterprise == false and buyer.groupGuarantee == false", then: RaiseRiskFinding(低), priority: 65 }
+      - { id: ARAgingWarning,             label: 账款账龄偏长,       when: "receivable.agingBucket in [61-90天|90天以上]", then: RaiseRiskFinding(中), priority: 60 }
+      - { id: PoolConcentrationWarning,   label: 池资产集中度偏高,   when: "pool.concentrationRatio > 0.2", then: RaiseRiskFinding(低), priority: 55 }
+      - { id: HighInterestRateWarning,    label: 融资利率偏高,       when: "factoringContract.interestRate > 0.15", then: RaiseRiskFinding(低), priority: 50 }
+      - { id: ShortTermWarning,           label: 融资期限过短,       when: "factoringContract.termDays < 30", then: RaiseRiskFinding(低), priority: 48 }
+      - { id: IndustryRiskWarning,        label: 行业风险偏高,       when: "buyer.industryRisk == 高", then: RaiseRiskFinding(中), priority: 45 }
+      - { id: ManualOverrideWarning,      label: 人工覆写预警,       when: "application.manualOverride == true", then: RaiseRiskFinding(中), priority: 40 }
+
+    weightTable:
+      HighDebtRatioWarning: 0.4
+      BuyerPaymentSlowWarning: 0.5
+      SellerOperatingShortWarning: 0.2
+      BuyerNotCoreWarning: 0.2
+      ARAgingWarning: 0.4
+      PoolConcentrationWarning: 0.3
+      HighInterestRateWarning: 0.15
+      ShortTermWarning: 0.1
+      IndustryRiskWarning: 0.4
+      ManualOverrideWarning: 0.3
+      aggregate: weighted_sum
+      threshold: { attention: 0.5, high: 0.8, critical: 1.2 }
+
+  constraints:
+    - { id: FinancingRatioLimit,      expr: "financingApplication.financingRatio <= 1.0", kind: hard }
+    - { id: CoverageAdequate,         expr: "guarantee.coverageAmount >= disbursement.amount * 0.8 or factoringContract.recourseType == 有追索权", kind: soft, weight: 0.4 }
+    - { id: ARvsInvoiceMatch,         expr: "receivable.invoiceAmount == sum(financedAmount) + applyAmount", kind: hard }
+    - { id: PoolConcentrationLimit,   expr: "pool.concentrationRatio <= 0.3", kind: soft, weight: 0.3 }
+    - { id: SellerCreditUsageLimit,   expr: "seller.usedAmount <= seller.creditLimit", kind: hard }
+
+  behaviors:
+    - { id: Veto,               label: 否决,         effect: "拒绝融资申请", hook: 风控终审驳回 }
+    - { id: RaiseRiskFinding,   label: 提出风险项,   effect: "记录风险事件并分级", hook: 风险监控台 }
+    - { id: RequireApproval,    label: 升级审批,     effect: "转高级风控或委员会", hook: 审批路由 }
+    - { id: RequireHumanReview, label: 人工复核,     effect: "标记需人工介入", hook: 风控复核队列 }
+    - { id: ProposeAmendment,   label: 要求补充材料, effect: "发起补件流程", hook: 业务反馈 }
+    - { id: BlockDisbursement,  label: 暂停放款,     effect: "冻结放款流程", hook: 资金管控 }
+    - { id: TriggerGuarantee,   label: 启动担保代偿, effect: "向担保方发起代偿", hook: 担保管理 }
+    - { id: Notify,             label: 通知,         effect: "推送相关方预警", hook: 通知中心 }
+    - { id: EscalateToCommittee,label: 升级委员会,   effect: "转风控委员会审议", hook: 高管审批 }
+    - { id: FreezePool,         label: 冻结资产池,   effect: "暂停池内新融资", hook: 池管理 }
+
+  scenarios:
+    - id: forward_factoring_review
+      label: 正向保理审核
+      description: 卖方转让自有应收账款获取融资
+      contract_types: [正向保理]
+      active_elements:
+        objects: [FactoringContract, Receivable, Seller, Buyer, FinancingApplication, Disbursement]
+        relations: [coversSeller, coversBuyer, hasApplication, assignedTo, resultsIn]
+        rules: [SellerBlacklistVeto, SellerKycExpiredVeto, ARNotConfirmedVeto, DuplicateFinancingVeto, HighDebtRatioWarning, BuyerPaymentSlowWarning]
+
+    - id: reverse_factoring_review
+      label: 反向保理审核
+      description: 核心企业配合，基于买方信用为卖方融资
+      contract_types: [反向保理]
+      active_elements:
+        objects: [FactoringContract, Receivable, Seller, Buyer, FinancingApplication, Pool]
+        relations: [coversSeller, coversBuyer, hasApplication, pooledIn, payableByBuyer]
+        rules: [BuyerCreditDVeto, BuyerDefault3TimesVeto, ExceedBuyerLimitVeto, BuyerNotCoreWarning, PoolConcentrationWarning]
+
+    - id: undisclosed_factoring_review
+      label: 暗保理审核
+      description: 买方不知情的保理融资，风险更高
+      contract_types: [暗保理]
+      active_elements:
+        objects: [FactoringContract, Receivable, Seller, Buyer, FinancingApplication, Guarantee]
+        relations: [coversSeller, assignedTo, securedByGua]
+        rules: [ARNotConfirmedVeto, FakeTradeVeto, NonRecourseNoBuyerCreditVeto, HighRatioNoGuaranteeVeto, IndustryRiskWarning, ManualOverrideWarning]
+
+    - id: pool_factoring_review
+      label: 池保理审核
+      description: 动态资产池模式，多笔应收账款循环融资
+      contract_types: [池保理]
+      active_elements:
+        objects: [FactoringContract, Receivable, Pool, Seller, Buyer, Disbursement, Repayment]
+        relations: [coversSeller, pooledIn, resultsIn, repaidBy]
+        rules: [ExceedPoolConcentrationVeto, PoolConcentrationWarning, ARAgingWarning, HighDebtRatioWarning]
+
+    - id: overdue_collection_review
+      label: 逾期催收处置
+      description: 应收账款到期未回款的催收与处置
+      contract_types: [正向保理, 反向保理, 池保理]
+      active_elements:
+        objects: [Disbursement, Repayment, RiskEvent, Guarantee, Buyer, Seller]
+        relations: [repaidBy, triggersRisk, securedByGua]
+        rules: [BuyerDefault3TimesVeto, TriggerGuarantee, FreezePool, EscalateToCommittee]

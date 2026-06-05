@@ -1,0 +1,366 @@
+# 锂电池生产计划排程本体库 v1.0 —— 智能制造场景
+# 业务域：锂电池制造 / MES / APS 高级计划排程
+# 覆盖：电芯生产 / 模组Pack / 化成 / 分容 / OCV测试 / 全检
+
+space:
+  code: battery_scheduling
+  name: 锂电池生产排程本体
+  domain: 智能制造APS
+  description: >
+    锂电池制造高级计划排程（APS）本体。覆盖电芯制造、模组Pack、化成分容、
+    OCV测试、全检等全流程，支持产能约束、物料齐套、设备OEE、换型时间等排程优化。
+
+ontology:
+  version: 1.0.0
+  domain: 智能制造APS
+
+  objects:
+    ProductionOrder:
+      label: 生产订单
+      key: poNo
+      fields:
+        poNo:           { type: string, required: true,  desc: "订单编号" }
+        orderType:      { type: "enum[电芯|模组|Pack|BMS]", required: true, desc: "订单类型" }
+        productModel:   { type: string, required: true,  desc: "产品型号" }
+        productSpec:    { type: string, required: true,  desc: "产品规格" }
+        quantity:       { type: int, required: true,  desc: "订单数量" }
+        priority:       { type: "enum[紧急|高|中|低]", default: "中", desc: "优先级" }
+        customer:       { type: string, required: false, desc: "客户名称" }
+        contractRef:    { type: string, required: false, desc: "关联合同号" }
+        requiredDate:   { type: datetime, required: true,  desc: "需求交付时间" }
+        plannedStart:   { type: datetime, required: false, desc: "计划开工时间" }
+        plannedEnd:     { type: datetime, required: false, desc: "计划完工时间" }
+        actualStart:    { type: datetime, required: false, desc: "实际开工时间" }
+        actualEnd:      { type: datetime, required: false, desc: "实际完工时间" }
+        status:         { type: "enum[待排程|已排程|执行中|已完成|暂停|取消]", required: true, desc: "状态" }
+        scheduleVersion: { type: int, default: 1,     desc: "排程版本" }
+        isRush:         { type: bool, default: false, desc: "是否加急" }
+        batchSize:      { type: int, required: false, desc: "批次大小" }
+        yieldTarget:    { type: "decimal(0..1)", default: 0.98, desc: "目标良率" }
+
+    WorkOrder:
+      label: 工单
+      key: woNo
+      fields:
+        woNo:           { type: string, required: true,  desc: "工单编号" }
+        woType:         { type: "enum[投料|搅拌|涂布|辊压|分切|卷绕|注液|化成|分容|OCV|模组组装|Pack组装|全检]", required: true, desc: "工单类型" }
+        sequenceNo:     { type: int, required: true,  desc: "工序序号" }
+        plannedQty:     { type: int, required: true,  desc: "计划数量" }
+        actualQty:      { type: int, default: 0,     desc: "实际完成数量" }
+        scrappedQty:    { type: int, default: 0,     desc: "报废数量" }
+        reworkQty:      { type: int, default: 0,     desc: "返工数量" }
+        plannedStart:   { type: datetime, required: false, desc: "计划开始" }
+        plannedEnd:     { type: datetime, required: false, desc: "计划结束" }
+        actualStart:    { type: datetime, required: false, desc: "实际开始" }
+        actualEnd:      { type: datetime, required: false, desc: "实际结束" }
+        setupTime:      { type: int, default: 0,     desc: "换型时间(分钟)" }
+        cycleTime:      { type: int, required: true,  desc: "节拍时间(秒/件)" }
+        status:         { type: "enum[待发布|已发布|执行中|已完成|暂停|异常]", required: true, desc: "状态" }
+        oeeTarget:      { type: "decimal(0..1)", default: 0.85, desc: "OEE目标" }
+
+    ProcessRoute:
+      label: 工艺路线
+      key: routeCode
+      fields:
+        routeCode:      { type: string, required: true,  desc: "路线编码" }
+        routeName:      { type: string, required: true,  desc: "路线名称" }
+        productModel:   { type: string, required: true,  desc: "适用产品型号" }
+        version:        { type: string, required: true,  desc: "版本" }
+        status:         { type: "enum[草稿|生效|已失效]", required: true, desc: "状态" }
+        standardTime:   { type: int, required: false, desc: "标准工时(分钟)" }
+        description:    { type: text, required: false, desc: "工艺说明" }
+
+    ProcessStep:
+      label: 工序
+      key: stepCode
+      fields:
+        stepCode:       { type: string, required: true,  desc: "工序编码" }
+        stepName:       { type: string, required: true,  desc: "工序名称" }
+        stepType:       { type: "enum[搅拌|涂布|辊压|分切|卷绕|叠片|注液|化成|分容|OCV|模组组装|Pack组装|全检|入库]", required: true, desc: "工序类型" }
+        sequence:       { type: int, required: true,  desc: "工序顺序" }
+        isBottleneck:   { type: bool, default: false, desc: "是否瓶颈工序" }
+        isCritical:     { type: bool, default: false, desc: "是否关键工序" }
+        standardTime:   { type: int, required: true,  desc: "标准工时(秒)" }
+        minLotSize:     { type: int, default: 1,     desc: "最小批量" }
+        maxLotSize:     { type: int, required: false, desc: "最大批量" }
+        yieldRate:      { type: "decimal(0..1)", default: 0.99, desc: "工序良率" }
+        parallelFactor: { type: int, default: 1,     desc: "并行系数" }
+        tempMin:        { type: "decimal", required: false, desc: "温度下限(°C)" }
+        tempMax:        { type: "decimal", required: false, desc: "温度上限(°C)" }
+        humidityMax:    { type: "decimal", required: false, desc: "湿度上限(%RH)" }
+        cleanClass:     { type: "enum[万级|千级|百级|十级]", required: false, desc: "洁净等级" }
+
+    Equipment:
+      label: 设备
+      key: eqCode
+      fields:
+        eqCode:         { type: string, required: true,  desc: "设备编码" }
+        eqName:         { type: string, required: true,  desc: "设备名称" }
+        eqType:         { type: "enum[搅拌机|涂布机|辊压机|分切机|卷绕机|叠片机|注液机|化成柜|分容柜|OCV测试机|模组线|Pack线|AGV|立体库]", required: true, desc: "设备类型" }
+        eqGroup:        { type: string, required: true,  desc: "设备组" }
+        workshop:       { type: string, required: true,  desc: "所属车间" }
+        line:           { type: string, required: false, desc: "所属产线" }
+        capacity:       { type: int, required: true,  desc: "产能(件/小时)" }
+        status:         { type: "enum[运行|待机|维护|故障|改造|报废]", required: true, desc: "状态" }
+        oee:            { type: "decimal(0..1)", required: false, desc: "当前OEE" }
+        mttr:           { type: int, required: false, desc: "平均修复时间(分钟)" }
+        mtbf:           { type: int, required: false, desc: "平均故障间隔(小时)" }
+        lastMaintDate:  { type: date, required: false, desc: "上次保养日期" }
+        nextMaintDate:  { type: date, required: false, desc: "下次保养日期" }
+        powerConsumption: { type: decimal, required: false, desc: "功耗(kW)" }
+
+    Material:
+      label: 物料
+      key: materialCode
+      fields:
+        materialCode:   { type: string, required: true,  desc: "物料编码" }
+        materialName:   { type: string, required: true,  desc: "物料名称" }
+        materialType:   { type: "enum[正极材料|负极材料|电解液|隔膜|铜箔|铝箔|壳体|顶盖|极耳|BMS|结构件|包材]", required: true, desc: "物料类型" }
+        specification:  { type: string, required: false, desc: "规格" }
+        unit:           { type: "enum[kg|g|L|m|片|支|套|箱]", required: true, desc: "单位" }
+        safetyStock:    { type: "decimal", required: true,  desc: "安全库存" }
+        currentStock:   { type: "decimal", required: true,  desc: "当前库存" }
+        onOrderQty:     { type: "decimal", default: 0,     desc: "在途数量" }
+        supplier:       { type: string, required: false, desc: "供应商" }
+        leadTimeDays:   { type: int, required: false, desc: "采购提前期(天)" }
+        shelfLifeDays:  { type: int, required: false, desc: "保质期(天)" }
+        status:         { type: "enum[正常|短缺|积压|冻结|临期]", required: true, desc: "状态" }
+        isKeyMaterial:  { type: bool, default: false, desc: "是否关键物料" }
+
+    BOM:
+      label: 物料清单
+      key: bomCode
+      fields:
+        bomCode:        { type: string, required: true,  desc: "BOM编码" }
+        productModel:   { type: string, required: true,  desc: "产品型号" }
+        version:        { type: string, required: true,  desc: "版本" }
+        status:         { type: "enum[草稿|生效|已失效]", required: true, desc: "状态" }
+        effStartDate:   { type: date, required: true,  desc: "生效日期" }
+        effEndDate:     { type: date, required: false, desc: "失效日期" }
+
+    BOMLine:
+      label: BOM行项
+      key: bomLineId
+      fields:
+        bomLineId:      { type: string, required: true,  desc: "行项ID" }
+        sequence:       { type: int, required: true,  desc: "序号" }
+        materialCode:   { type: string, required: true,  desc: "物料编码" }
+        qtyPerUnit:     { type: "decimal", required: true,  desc: "单件用量" }
+        wasteRate:      { type: "decimal(0..1)", default: 0.02, desc: "损耗率" }
+        isSubstitutable: { type: bool, default: false, desc: "是否可替代" }
+        altMaterialCode: { type: string, required: false, desc: "替代物料编码" }
+        supplyType:     { type: "enum[自制|外购|客供]", required: true, desc: "供应类型" }
+        issueType:      { type: "enum[推式|拉式]", default: "推式", desc: "发料方式" }
+
+    QualityCheck:
+      label: 质检记录
+      key: qcNo
+      fields:
+        qcNo:           { type: string, required: true,  desc: "质检编号" }
+        checkType:      { type: "enum[来料检验|过程检验|首件检验|巡检|完工检验|出货检验]", required: true, desc: "检验类型" }
+        checkItem:      { type: string, required: true,  desc: "检验项目" }
+        standardValue:  { type: "decimal", required: true,  desc: "标准值" }
+        upperLimit:     { type: "decimal", required: false, desc: "上限" }
+        lowerLimit:     { type: "decimal", required: false, desc: "下限" }
+        actualValue:    { type: "decimal", required: false, desc: "实测值" }
+        result:         { type: "enum[合格|不合格|特采|返工|报废]", required: true, desc: "结果" }
+        inspector:      { type: string, required: true,  desc: "检验员" }
+        checkTime:      { type: datetime, required: true,  desc: "检验时间" }
+        sampleSize:     { type: int, required: true,  desc: "样本量" }
+        defectCount:    { type: int, default: 0,     desc: "不良数" }
+
+    Inventory:
+      label: 库存记录
+      key: invId
+      fields:
+        invId:          { type: string, required: true,  desc: "库存ID" }
+        warehouse:      { type: string, required: true,  desc: "仓库" }
+        zone:           { type: string, required: false, desc: "库区" }
+        location:       { type: string, required: false, desc: "库位" }
+        batchNo:        { type: string, required: false, desc: "批次号" }
+        qty:            { type: "decimal", required: true,  desc: "数量" }
+        reservedQty:    { type: "decimal", default: 0,     desc: "预留数量" }
+        availableQty:   { type: "decimal", required: true,  desc: "可用数量" }
+        status:         { type: "enum[合格品|待检|冻结|不合格|报废]", required: true, desc: "状态" }
+        receiptDate:    { type: date, required: false, desc: "入库日期" }
+        expiryDate:     { type: date, required: false, desc: "有效期至" }
+
+    Shift:
+      label: 班次
+      key: shiftCode
+      fields:
+        shiftCode:      { type: string, required: true,  desc: "班次编码" }
+        shiftName:      { type: string, required: true,  desc: "班次名称" }
+        startTime:      { type: string, required: true,  desc: "开始时间" }
+        endTime:        { type: string, required: true,  desc: "结束时间" }
+        breakMinutes:   { type: int, default: 60,    desc: "休息时长(分钟)" }
+        workingDays:    { type: "list", required: false, desc: "工作日期" }
+        isActive:       { type: bool, default: true, desc: "是否启用" }
+
+    Operator:
+      label: 操作员
+      key: opId
+      fields:
+        opId:           { type: string, required: true,  desc: "员工编号" }
+        name:           { type: string, required: true,  desc: "姓名" }
+        skillLevel:     { type: "enum[初级|中级|高级|技师|高级技师]", required: true, desc: "技能等级" }
+        certList:       { type: "list", required: false, desc: "持证列表" }
+        workshop:       { type: string, required: true,  desc: "所属车间" }
+        primarySkill:   { type: string, required: false, desc: "主技能" }
+        secondarySkills: { type: "list", required: false, desc: "副技能" }
+        isQualified:    { type: bool, default: true, desc: "是否持证上岗" }
+
+    Defect:
+      label: 缺陷
+      key: defectCode
+      fields:
+        defectCode:     { type: string, required: true,  desc: "缺陷编码" }
+        defectName:     { type: string, required: true,  desc: "缺陷名称" }
+        defectType:     { type: "enum[外观|尺寸|电性能|化学|物理|功能|安全]", required: true, desc: "缺陷类型" }
+        severity:       { type: "enum[致命|严重|一般|轻微]", required: true, desc: "严重度" }
+        rootCause:      { type: string, required: false, desc: "根因" }
+        reworkable:     { type: bool, default: true, desc: "是否可返工" }
+
+  links:
+    # 订单 → 工单
+    - { name: decomposesTo,       label: 分解为,     from: ProductionOrder, to: WorkOrder, card: 1-n, traversable: false }
+    # 工单 → 工序
+    - { name: followsRoute,       label: 遵循路线,   from: WorkOrder, to: ProcessRoute, card: n-1, traversable: false }
+    - { name: executesStep,       label: 执行工序,   from: WorkOrder, to: ProcessStep, card: n-1, traversable: false }
+    # 工单 → 设备
+    - { name: assignedToEq,       label: 分配设备,   from: WorkOrder, to: Equipment, card: n-1, traversable: true }
+    # 工单 → 操作员
+    - { name: assignedToOp,       label: 分配人员,   from: WorkOrder, to: Operator, card: n-1, traversable: false }
+    # 工艺路线 → 工序
+    - { name: consistsOf,         label: 包含工序,   from: ProcessRoute, to: ProcessStep, card: 1-n, traversable: false }
+    # BOM → 物料行项
+    - { name: hasLineItem,        label: 行项,       from: BOM, to: BOMLine, card: 1-n, traversable: false }
+    # BOM行项 → 物料
+    - { name: usesMaterial,       label: 使用物料,   from: BOMLine, to: Material, card: n-1, traversable: false }
+    # 工单 → 物料需求
+    - { name: requiresMaterial,   label: 需要物料,   from: WorkOrder, to: Material, card: n-n, traversable: true }
+    # 工单 → 质检
+    - { name: hasQualityCheck,    label: 质检记录,   from: WorkOrder, to: QualityCheck, card: 1-n, traversable: false }
+    # 物料 → 库存
+    - { name: storedAs,           label: 库存记录,   from: Material, to: Inventory, card: 1-n, traversable: false }
+    # 设备 → 班次
+    - { name: operatesInShift,    label: 运行班次,   from: Equipment, to: Shift, card: n-n, traversable: false }
+    # 操作员 → 班次
+    - { name: worksInShift,       label: 工作班次,   from: Operator, to: Shift, card: n-n, traversable: false }
+    # 缺陷 → 质检
+    - { name: foundInCheck,       label: 发现于,     from: Defect, to: QualityCheck, card: n-1, traversable: false }
+    # 工单 → 缺陷
+    - { name: hasDefect,          label: 存在缺陷,   from: WorkOrder, to: Defect, card: 1-n, traversable: false }
+    # 订单类型兼容性
+    - { name: compatibleWith,     label: 兼容,       from: ProcessRoute, to: Equipment, card: n-n, traversable: false }
+
+  rules:
+    hard:
+      # 产能约束否决
+      - { id: EquipmentDownVeto,          label: 设备故障否决,       when: "equipment.status in [故障|维护|报废]", then: Veto, priority: 200 }
+      - { id: ExceedCapacityVeto,         label: 超产能否决,         when: "workOrder.plannedQty * workOrder.cycleTime > equipment.capacity * shift.effectiveHours", then: Veto, priority: 195 }
+      - { id: MissingMaterialVeto,        label: 物料不齐套否决,     when: "material.currentStock + material.onOrderQty < workOrder.plannedQty * bomLine.qtyPerUnit * (1 + bomLine.wasteRate)", then: Veto, priority: 190 }
+      - { id: ExpiredMaterialVeto,        label: 物料过期否决,       when: "material.shelfLifeDays != null and daysSince(inventory.receiptDate) > material.shelfLifeDays * 0.8", then: Veto, priority: 185 }
+      - { id: UnqualifiedOperatorVeto,    label: 人员未持证否决,     when: "operator.isQualified == false", then: Veto, priority: 180 }
+      - { id: MaintenanceDueVeto,         label: 保养到期否决,       when: "equipment.nextMaintDate != null and equipment.nextMaintDate <= workOrder.plannedStart", then: Veto, priority: 175 }
+      - { id: BOMExpiredVeto,             label: BOM过期否决,        when: "bom.effEndDate != null and bom.effEndDate < today()", then: Veto, priority: 170 }
+      - { id: CriticalDefectVeto,         label: 致命缺陷否决,       when: "qualityCheck.result == 不合格 and defect.severity == 致命", then: [BlockProduction, Veto], priority: 200 }
+      - { id: EnvironmentalMismatchVeto,  label: 环境不匹配否决,     when: "processStep.cleanClass == 百级 and equipment.cleanClass != 百级", then: Veto, priority: 160 }
+      - { id: RushOrderWithoutReasonVeto, label: 无因加急否决,       when: "productionOrder.isRush == true and productionOrder.priority != 紧急", then: Veto, priority: 155 }
+
+    soft:
+      - { id: LowOEEWarning,              label: 设备OEE偏低,        when: "equipment.oee < equipment.oeeTarget * 0.9", then: RaiseRiskFinding(低), priority: 80 }
+      - { id: BottleneckOverloadWarning,  label: 瓶颈工序过载,       when: "processStep.isBottleneck == true and bottleneckLoadFactor > 0.9", then: RaiseRiskFinding(高), priority: 78 }
+      - { id: MaterialShortageWarning,    label: 物料库存偏低,       when: "material.currentStock < material.safetyStock * 1.5", then: RaiseRiskFinding(中), priority: 75 }
+      - { id: SetupTimeLongWarning,       label: 换型时间过长,       when: "workOrder.setupTime > 60", then: RaiseRiskFinding(低), priority: 70 }
+      - { id: YieldBelowTargetWarning,    label: 良率低于目标,       when: "workOrder.actualQty / workOrder.plannedQty < productionOrder.yieldTarget", then: RaiseRiskFinding(中), priority: 65 }
+      - { id: TightScheduleWarning,       label: 排程过紧,           when: "productionOrder.plannedEnd > productionOrder.requiredDate - 48h", then: RaiseRiskFinding(中), priority: 60 }
+      - { id: HighReworkRateWarning,      label: 返工率偏高,         when: "workOrder.reworkQty / workOrder.plannedQty > 0.05", then: RaiseRiskFinding(低), priority: 55 }
+      - { id: PowerPeakWarning,           label: 能耗峰值预警,       when: "sum(equipment.powerConsumption) > workshop.powerLimit * 0.9", then: RaiseRiskFinding(低), priority: 50 }
+      - { id: SkillMismatchWarning,       label: 技能不匹配,         when: "operator.skillLevel < processStep.requiredSkillLevel", then: RaiseRiskFinding(中), priority: 48 }
+      - { id: LongLeadTimeWarning,        label: 采购提前期长,       when: "material.leadTimeDays > 14 and material.isKeyMaterial == true", then: RaiseRiskFinding(低), priority: 45 }
+      - { id: ParallelUnderUtilized,      label: 并行利用率低,       when: "processStep.parallelFactor > 1 and utilization < 0.6", then: RaiseRiskFinding(低), priority: 42 }
+
+    weightTable:
+      LowOEEWarning: 0.2
+      BottleneckOverloadWarning: 0.6
+      MaterialShortageWarning: 0.4
+      SetupTimeLongWarning: 0.15
+      YieldBelowTargetWarning: 0.5
+      TightScheduleWarning: 0.4
+      HighReworkRateWarning: 0.25
+      PowerPeakWarning: 0.1
+      SkillMismatchWarning: 0.35
+      LongLeadTimeWarning: 0.2
+      ParallelUnderUtilized: 0.1
+      aggregate: weighted_sum
+      threshold: { attention: 0.5, high: 0.8, critical: 1.2 }
+
+  constraints:
+    - { id: CapacityLimit,              expr: "sum(workOrder.plannedQty * workOrder.cycleTime) <= equipment.capacity * shift.effectiveHours", kind: hard }
+    - { id: MaterialBalance,            expr: "forall wo in WorkOrder: material.currentStock >= wo.plannedQty * bomLine.qtyPerUnit * (1 + bomLine.wasteRate)", kind: hard }
+    - { id: SetupSequenceOptimal,       expr: "sum(setupTime) <= totalAvailableTime * 0.1", kind: soft, weight: 0.3 }
+    - { id: DeliveryOnTime,             expr: "productionOrder.actualEnd <= productionOrder.requiredDate", kind: soft, weight: 0.5 }
+    - { id: OEEAboveTarget,             expr: "equipment.oee >= equipment.oeeTarget", kind: soft, weight: 0.3 }
+    - { id: InventoryTurnover,          expr: "material.currentStock <= material.safetyStock * 3", kind: soft, weight: 0.2 }
+    - { id: SkillLevelMatch,            expr: "operator.skillLevel >= processStep.requiredSkillLevel", kind: hard }
+    - { id: EnvironmentalCompliance,    expr: "processStep.tempMin <= env.temperature <= processStep.tempMax", kind: hard }
+    - { id: WorkInProgressLimit,        expr: "wipCount <= wipLimit", kind: soft, weight: 0.25 }
+
+  behaviors:
+    - { id: Veto,               label: 否决,         effect: "拒绝排程/拒绝开工", hook: 排程否决 }
+    - { id: RaiseRiskFinding,   label: 提出风险项,   effect: "记录风险并分级", hook: 风险看板 }
+    - { id: BlockProduction,    label: 停产封锁,     effect: "暂停产线", hook: MES联动 }
+    - { id: RequireApproval,    label: 升级审批,     effect: "转产线主管/工程部", hook: 审批流 }
+    - { id: RescheduleOrder,    label: 重新排程,     effect: "触发APS重排", hook: APS引擎 }
+    - { id: AlertMaintenance,   label: 预警保养,     effect: "推送保养提醒", hook: 设备管理 }
+    - { id: RequestMaterial,    label: 催料,         effect: "向采购发催料单", hook: ERP联动 }
+    - { id: RerouteToAltEq,     label: 转设备,       effect: "转替代设备", hook: 设备调度 }
+    - { id: NotifyQuality,      label: 通知质量,     effect: "推送质检异常", hook: QMS联动 }
+    - { id: EscalateToManager,  label: 升级经理,     effect: "通知生产经理", hook: 消息中心 }
+
+  scenarios:
+    - id: cell_production_scheduling
+      label: 电芯生产排程
+      description: 电芯制造全流程（搅拌→涂布→辊压→分切→卷绕→注液→化成→分容→OCV）
+      contract_types: [电芯]
+      active_elements:
+        objects: [ProductionOrder, WorkOrder, ProcessRoute, ProcessStep, Equipment, Material, BOM, BOMLine, Operator]
+        relations: [decomposesTo, followsRoute, executesStep, assignedToEq, assignedToOp, usesMaterial]
+        rules: [EquipmentDownVeto, ExceedCapacityVeto, MissingMaterialVeto, BottleneckOverloadWarning, MaterialShortageWarning, YieldBelowTargetWarning]
+
+    - id: module_pack_scheduling
+      label: 模组Pack排程
+      description: 模组组装和Pack组装排程
+      contract_types: [模组, Pack]
+      active_elements:
+        objects: [ProductionOrder, WorkOrder, ProcessStep, Equipment, Operator, QualityCheck]
+        relations: [decomposesTo, executesStep, assignedToEq, assignedToOp, hasQualityCheck]
+        rules: [UnqualifiedOperatorVeto, CriticalDefectVeto, SkillMismatchWarning, SetupTimeLongWarning]
+
+    - id: formation_capacity_scheduling
+      label: 化成分容排程
+      description: 化成柜和分容柜的产能优化排程
+      contract_types: [电芯]
+      active_elements:
+        objects: [WorkOrder, Equipment, Shift, Defect]
+        relations: [assignedToEq, operatesInShift, hasDefect]
+        rules: [ExceedCapacityVeto, LowOEEWarning, PowerPeakWarning, ParallelUnderUtilized, EnvironmentalMismatchVeto]
+
+    - id: rush_order_handling
+      label: 加急订单处理
+      description: 紧急插单的排程调整与资源重分配
+      contract_types: [电芯, 模组, Pack]
+      active_elements:
+        objects: [ProductionOrder, WorkOrder, Equipment, Material, Operator]
+        relations: [decomposesTo, assignedToEq, assignedToOp, requiresMaterial]
+        rules: [RushOrderWithoutReasonVeto, TightScheduleWarning, RescheduleOrder, RerouteToAltEq, RequestMaterial]
+
+    - id: material_shortage_response
+      label: 物料短缺响应
+      description: 物料不齐套时的替代方案与排程调整
+      contract_types: [电芯, 模组, Pack, BMS]
+      active_elements:
+        objects: [Material, BOM, BOMLine, Inventory, WorkOrder]
+        relations: [usesMaterial, storedAs, requiresMaterial]
+        rules: [MissingMaterialVeto, ExpiredMaterialVeto, MaterialShortageWarning, RequestMaterial, LongLeadTimeWarning]

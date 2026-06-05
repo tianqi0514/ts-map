@@ -3,16 +3,16 @@
 import os
 
 # ── 后端 API ──
-API_BASE = os.environ.get("API_BASE", "http://localhost:8001")
+API_BASE = os.environ.get("API_BASE", "http://localhost:9000")
 
 # ── Neo4j ──
-NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:9004")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "password123")
 
 # ── PostgreSQL ──
 PG_HOST = os.environ.get("PG_HOST", "localhost")
-PG_PORT = int(os.environ.get("PG_PORT", "5432"))
+PG_PORT = int(os.environ.get("PG_PORT", "9002"))
 PG_DB = os.environ.get("PG_DB", "zhishen")
 PG_USER = os.environ.get("PG_USER", "postgres")
 PG_PASSWORD = os.environ.get("PG_PASSWORD", "postgres")

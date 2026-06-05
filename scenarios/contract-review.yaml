@@ -1,0 +1,477 @@
+# 合同审核本体库 v2.0 —— 传神智谱标准模板
+# 业务域：企业合同全生命周期合规审核
+# 覆盖：采购合同 / 销售合同 / 服务合同 / NDA / 框架协议
+
+space:
+  code: contract_review
+  name: 合同审核本体
+  domain: 合同合规审核
+  description: >
+    企业合同全生命周期合规审核本体。覆盖采购、销售、服务、NDA等合同类型，
+    包含对象定义、关系网络、行为模板、硬规则/软规则/约束三层规则体系。
+
+ontology:
+  version: 2.0.0
+  domain: 合同合规审核
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 对象定义
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  objects:
+    Contract:
+      label: 合同
+      key: contractNo
+      fields:
+        contractNo:        { type: string, required: true,  desc: "合同编号" }
+        title:             { type: string, required: true,  desc: "合同名称" }
+        contractType:      { type: "enum[采购|销售|服务|框架|NDA]", required: true, desc: "合同类型" }
+        amount:            { type: money, required: true,  desc: "合同金额(元)" }
+        currency:          { type: "enum[CNY|USD|EUR]", default: "CNY", desc: "币种" }
+        signDate:          { type: date, required: true,  desc: "签署日期" }
+        effectiveDate:     { type: date, required: false, desc: "生效日期" }
+        expiryDate:        { type: date, required: false, desc: "到期日期" }
+        termMonths:        { type: int, required: false,  desc: "合同期限(月)" }
+        autoRenewal:       { type: bool, default: false,  desc: "自动续约" }
+        renewalNoticeDays: { type: int, default: 30,     desc: "续约提前通知天数" }
+        governingLaw:      { type: string, required: false, desc: "适用法律" }
+        jurisdiction:      { type: string, required: false, desc: "争议解决地" }
+        relatedDisclosed:  { type: bool, default: false,  desc: "关联交易已披露" }
+        policyVersion:     { type: string, required: false, desc: "适用政策版本" }
+        status:            { type: "enum[草拟|审核中|已生效|履行中|已终止|已归档]", required: true, desc: "合同状态" }
+        digitalSignature:  { type: bool, default: false,  desc: "已电子签章" }
+        confidentialLevel: { type: "enum[公开|内部|保密|机密]", default: "内部", desc: "保密级别" }
+
+    CounterParty:
+      label: 签约主体
+      key: taxId
+      fields:
+        taxId:           { type: string, required: true,  desc: "统一社会信用代码" }
+        name:            { type: string, required: true,  desc: "企业名称" }
+        shortName:       { type: string, required: false, desc: "企业简称" }
+        status:          { type: "enum[正常|黑名单|战略伙伴|观察名单]", required: true, desc: "主体状态" }
+        regCapital:      { type: money, required: false, desc: "注册资本(元)" }
+        paidCapital:     { type: money, required: false, desc: "实缴资本(元)" }
+        establishedDate: { type: date, required: false, desc: "成立日期" }
+        businessStatus:  { type: "enum[正常|异常|吊销|注销|迁出]", required: true, desc: "经营状态" }
+        creditScore:     { type: "int(0..100)", required: false, desc: "信用评分" }
+        creditLevel:     { type: "enum[AAA|AA|A|BBB|BB|B|C|D]", required: false, desc: "信用等级" }
+        industry:        { type: string, required: false, desc: "所属行业" }
+        regAddress:      { type: string, required: false, desc: "注册地址" }
+        contactPhone:    { type: string, required: false, desc: "联系电话" }
+        isRelatedParty:  { type: bool, default: false,  desc: "是否关联方" }
+        country:         { type: string, default: "中国", desc: "所在国家" }
+
+    OwnEntity:
+      label: 我方主体
+      key: entityId
+      fields:
+        entityId:        { type: string, required: true,  desc: "主体编号" }
+        name:            { type: string, required: true,  desc: "主体名称" }
+        role:            { type: "enum[采购方|供货方|服务方|需求方]", required: true, desc: "角色" }
+        businessUnit:    { type: string, required: false, desc: "业务单元" }
+        budgetCenter:    { type: string, required: false, desc: "预算中心" }
+
+    LegalRep:
+      label: 法定代表人
+      key: repId
+      fields:
+        repId:      { type: string, required: true, desc: "法人编号" }
+        name:       { type: string, required: true, desc: "姓名" }
+        idType:     { type: "enum[身份证|护照]", required: true, desc: "证件类型" }
+        idMasked:   { type: string, required: true, desc: "脱敏证件号" }
+        since:      { type: date, required: false, desc: "任职开始日期" }
+        isValid:    { type: bool, default: true, desc: "是否有效" }
+
+    Shareholder:
+      label: 股东
+      key: shId
+      fields:
+        shId:         { type: string, required: true, desc: "股东编号" }
+        holder:       { type: string, required: true, desc: "持有人名称" }
+        holderType:   { type: "enum[自然人|企业|基金|国资]", required: true, desc: "持有人类型" }
+        ratio:        { type: "decimal(0..1)", required: true, desc: "持股比例" }
+        isUBO:        { type: bool, default: false, desc: "是否最终受益人" }
+        isController: { type: bool, default: false, desc: "是否实际控制人" }
+
+    Signatory:
+      label: 授权签署人
+      key: sigId
+      fields:
+        sigId:        { type: string, required: true, desc: "签署人编号" }
+        name:         { type: string, required: true, desc: "姓名" }
+        authScope:    { type: string, required: true, desc: "授权范围" }
+        authDocNo:    { type: string, required: true, desc: "授权文件编号" }
+        authValidFrom: { type: date, required: true, desc: "授权有效期起" }
+        authValidTo:  { type: date, required: true, desc: "授权有效期止" }
+        authStatus:   { type: "enum[有效|即将过期|已过期|已撤销]", required: true, desc: "授权状态" }
+        maxAmount:    { type: money, required: false, desc: "最大授权金额" }
+
+    Qualification:
+      label: 资质证照
+      key: qualId
+      fields:
+        qualId:   { type: string, required: true, desc: "资质编号" }
+        qualType: { type: string, required: true, desc: "资质类型" }
+        certNo:   { type: string, required: true, desc: "证书编号" }
+        issuedBy: { type: string, required: false, desc: "发证机构" }
+        validFrom: { type: date, required: true, desc: "有效期起" }
+        validTo:  { type: date, required: true, desc: "有效期止" }
+        status:   { type: "enum[有效|即将过期|已过期|被吊销]", required: true, desc: "状态" }
+        scope:    { type: string, required: false, desc: "许可范围" }
+
+    Clause:
+      label: 条款
+      key: clauseId
+      fields:
+        clauseId:     { type: string, required: true, desc: "条款编号" }
+        clauseType:   { type: "enum[付款|保密|数据合规|质量|交付|责任上限|续约|知识产权|不可抗力|争议解决|其他]", required: true, desc: "条款类型" }
+        title:        { type: string, required: false, desc: "条款标题" }
+        text:         { type: text, required: true, desc: "条款原文" }
+        mandatory:    { type: bool, default: false, desc: "是否强制" }
+        negotiable:   { type: bool, default: true, desc: "是否可协商" }
+        riskLevel:    { type: "enum[高|中|低]", default: "低", desc: "风险等级" }
+        suggestedText: { type: text, required: false, desc: "建议文本" }
+
+    Obligation:
+      label: 履约义务
+      key: obId
+      fields:
+        obId:       { type: string, required: true, desc: "义务编号" }
+        obligor:    { type: ref, required: true, desc: "义务方" }
+        description: { type: text, required: true, desc: "义务说明" }
+        dueDate:    { type: date, required: true, desc: "到期日期" }
+        milestone:  { type: ref, required: false, desc: "关联里程碑" }
+        penaltyRate: { type: "decimal(0..1)", required: false, desc: "违约金比例" }
+        status:     { type: "enum[未开始|进行中|已完成|逾期|豁免]", required: true, desc: "状态" }
+
+    PaymentTerm:
+      label: 付款计划
+      key: ptId
+      fields:
+        ptId:         { type: string, required: true, desc: "付款计划编号" }
+        stage:        { type: "enum[预付|到货款|验收款|质保金|尾款]", required: true, desc: "阶段" }
+        ratio:        { type: "decimal(0..1)", required: true, desc: "比例" }
+        amount:       { type: money, required: true, desc: "金额" }
+        paymentDays:  { type: int, required: false, desc: "付款天数" }
+        condition:    { type: string, required: false, desc: "付款条件" }
+        isGuaranteed: { type: bool, default: false, desc: "是否有担保" }
+        guaranteeType: { type: "enum[保函|保证金|信用证|抵押]", required: false, desc: "担保类型" }
+
+    Payment:
+      label: 付款记录
+      key: payId
+      fields:
+        payId:      { type: string, required: true, desc: "付款编号" }
+        against:    { type: ref, required: true, desc: "对应计划" }
+        amount:     { type: money, required: true, desc: "付款金额" }
+        paidAt:     { type: date, required: true, desc: "付款时间" }
+        status:     { type: "enum[计划|已付|冻结|退回]", required: true, desc: "状态" }
+        payMethod:  { type: "enum[电汇|支票|银承|商承|信用证]", required: false, desc: "付款方式" }
+
+    Deliverable:
+      label: 交付物
+      key: delId
+      fields:
+        delId:   { type: string, required: true, desc: "交付物编号" }
+        name:    { type: string, required: true, desc: "名称" }
+        qty:     { type: int, required: true, desc: "数量" }
+        unit:    { type: string, required: false, desc: "单位" }
+        spec:    { type: text, required: false, desc: "规格" }
+        acceptStd: { type: text, required: false, desc: "验收标准" }
+
+    Milestone:
+      label: 交付里程碑
+      key: msId
+      fields:
+        msId:              { type: string, required: true, desc: "里程碑编号" }
+        name:              { type: string, required: true, desc: "名称" }
+        dueDate:           { type: date, required: true, desc: "计划日期" }
+        actualDate:        { type: date, required: false, desc: "实际日期" }
+        acceptanceCriteria: { type: text, required: true, desc: "验收标准" }
+        status:            { type: "enum[待开始|进行中|已达成|逾期|跳过]", required: true, desc: "状态" }
+        responsible:       { type: ref, required: false, desc: "责任人" }
+
+    Invoice:
+      label: 发票
+      key: invId
+      fields:
+        invId:    { type: string, required: true, desc: "发票编号" }
+        type:     { type: "enum[增值税专票|增值税普票|电子发票]", required: true, desc: "类型" }
+        amount:   { type: money, required: true, desc: "金额" }
+        taxRate:  { type: "decimal(0..1)", required: false, desc: "税率" }
+        issuedAt: { type: date, required: true, desc: "开票日期" }
+        verified: { type: bool, default: false, desc: "已验真" }
+
+    CompliancePolicy:
+      label: 合规政策
+      key: policyId
+      fields:
+        policyId:        { type: string, required: true, desc: "政策编号" }
+        version:         { type: string, required: true, desc: "版本" }
+        name:            { type: string, required: true, desc: "政策名称" }
+        effectiveFrom:   { type: date, required: true, desc: "生效日期" }
+        effectiveTo:     { type: date, required: false, desc: "失效日期" }
+        mandatoryClauses: { type: "list", required: false, desc: "强制条款类型列表" }
+        approvalMatrix:  { type: text, required: false, desc: "审批矩阵" }
+        amountThresholds: { type: text, required: false, desc: "金额阈值配置" }
+        applicableTypes: { type: "list", required: false, desc: "适用合同类型" }
+
+    Regulation:
+      label: 适用法规
+      key: regId
+      fields:
+        regId:         { type: string, required: true, desc: "法规编号" }
+        name:          { type: string, required: true, desc: "法规名称" }
+        jurisdiction:  { type: string, required: true, desc: "适用地区" }
+        authority:     { type: string, required: false, desc: "发布机构" }
+        effectiveFrom: { type: date, required: true, desc: "生效日期" }
+        category:      { type: "enum[法律|行政法规|部门规章|地方性法规|行业标准]", required: true, desc: "类别" }
+
+    Approval:
+      label: 审批记录
+      key: apId
+      fields:
+        apId:      { type: string, required: true, desc: "审批编号" }
+        stage:     { type: "enum[业务初审|法务审核|财务审核|风控审核|高管审批|董事长审批]", required: true, desc: "审批阶段" }
+        approver:  { type: ref, required: true, desc: "审批人" }
+        decision:  { type: "enum[待审|通过|驳回|转办|加签]", required: true, desc: "审批结论" }
+        comment:   { type: text, required: false, desc: "审批意见" }
+        decidedAt: { type: date, required: false, desc: "审批时间" }
+        dueDate:   { type: date, required: false, desc: "审批截止日期" }
+
+    Amendment:
+      label: 变更协议
+      key: amId
+      fields:
+        amId:    { type: string, required: true, desc: "变更编号" }
+        scope:   { type: text, required: true, desc: "变更范围" }
+        reason:  { type: text, required: false, desc: "变更原因" }
+        version: { type: int, required: true, desc: "变更版本" }
+        status:  { type: "enum[草拟|审核中|已生效]", required: true, desc: "状态" }
+
+    RiskFinding:
+      label: 风险项
+      key: rfId
+      fields:
+        rfId:      { type: string, required: true, desc: "风险编号" }
+        level:     { type: "enum[低|中|高|致命]", required: true, desc: "风险等级" }
+        type:      { type: string, required: true, desc: "风险类型" }
+        target:    { type: ref, required: true, desc: "指向对象" }
+        ruleType:  { type: "enum[硬|软]", required: true, desc: "规则类型" }
+        evidence:  { type: "list", required: false, desc: "证据列表" }
+        suggestedAction: { type: string, required: false, desc: "建议处置" }
+        resolved:  { type: bool, default: false, desc: "已解决" }
+
+    Attachment:
+      label: 附件证据
+      key: atId
+      fields:
+        atId:     { type: string, required: true, desc: "附件编号" }
+        docType:  { type: "enum[营业执照|授权委托书|资质证书|发票|合同正本|审计报告|银行流水|其他]", required: true, desc: "文档类型" }
+        name:     { type: string, required: true, desc: "文件名" }
+        uri:      { type: string, required: true, desc: "文件地址" }
+        hash:     { type: string, required: false, desc: "文件哈希" }
+        uploadedAt: { type: date, required: false, desc: "上传时间" }
+        pageCount: { type: int, required: false, desc: "页数" }
+
+    PerformanceBond:
+      label: 履约保函
+      key: bondId
+      fields:
+        bondId:    { type: string, required: true, desc: "保函编号" }
+        bondType:  { type: "enum[履约保函|质量保函|投标保函|预付款保函]", required: true, desc: "保函类型" }
+        amount:    { type: money, required: true, desc: "保函金额" }
+        bank:      { type: string, required: true, desc: "开立银行" }
+        validFrom: { type: date, required: true, desc: "有效期起" }
+        validTo:   { type: date, required: true, desc: "有效期止" }
+        status:    { type: "enum[有效|已兑付|已退回|已过期]", required: true, desc: "状态" }
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 关系定义
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  links:
+    # 合同 ↔ 主体
+    - { name: signedByCounterparty, label: 签约对方, from: Contract, to: CounterParty, card: n-1, traversable: false }
+    - { name: signedByOwn,          label: 签约我方, from: Contract, to: OwnEntity, card: n-1, traversable: false }
+    - { name: signedBySignatory,    label: 由谁签署, from: Contract, to: Signatory, card: n-1, traversable: false }
+
+    # 主体 → 法人/股东/资质
+    - { name: hasLegalRep,          label: 法定代表人, from: CounterParty, to: LegalRep, card: 1-1, traversable: true }
+    - { name: hasShareholder,       label: 股东,       from: CounterParty, to: Shareholder, card: 1-n, traversable: true }
+    - { name: holdsQualification,   label: 持有资质,   from: CounterParty, to: Qualification, card: 1-n, traversable: false }
+
+    # 签署人 ↔ 主体
+    - { name: representsParty,      label: 代表主体,   from: Signatory, to: CounterParty, card: n-1, traversable: false }
+
+    # 合同 ↔ 内容
+    - { name: hasClause,            label: 含条款,     from: Contract, to: Clause, card: 1-n, traversable: true }
+    - { name: hasObligation,        label: 含义务,     from: Contract, to: Obligation, card: 1-n, traversable: false }
+    - { name: derivedFrom,          label: 义务源条款, from: Obligation, to: Clause, card: n-1, traversable: false }
+    - { name: hasPaymentTerm,       label: 付款计划,   from: Contract, to: PaymentTerm, card: 1-n, traversable: true }
+    - { name: hasDeliverable,       label: 交付物,     from: Contract, to: Deliverable, card: 1-n, traversable: false }
+    - { name: hasMilestone,         label: 里程碑,     from: Contract, to: Milestone, card: 1-n, traversable: false }
+
+    # 付款链路
+    - { name: settledBy,            label: 实际付款,   from: PaymentTerm, to: Payment, card: 1-n, traversable: false }
+    - { name: supportedBy,          label: 付款凭证,   from: Payment, to: Invoice, card: 1-1, traversable: false }
+
+    # 交付链路
+    - { name: deliveredAt,          label: 交付落点,   from: Deliverable, to: Milestone, card: n-1, traversable: false }
+
+    # 合规治理
+    - { name: governedByPolicy,     label: 适用政策,   from: Contract, to: CompliancePolicy, card: n-1, traversable: true }
+    - { name: governedByReg,        label: 适用法规,   from: Contract, to: Regulation, card: n-n, traversable: true }
+
+    # 审批变更
+    - { name: approvedVia,          label: 审批,       from: Contract, to: Approval, card: 1-n, traversable: false }
+    - { name: amendedBy,            label: 变更,       from: Contract, to: Amendment, card: 1-n, traversable: false }
+
+    # 风险与附件
+    - { name: hasRisk,              label: 风险项,     from: Contract, to: RiskFinding, card: 1-n, traversable: true }
+    - { name: referencesTarget,     label: 风险指向,   from: RiskFinding, to: [Clause, CounterParty, PaymentTerm, Milestone], card: n-n, traversable: false }
+    - { name: hasAttachment,        label: 附件,       from: Contract, to: Attachment, card: 1-n, traversable: false }
+
+    # 保函
+    - { name: securedBy,            label: 保函担保,   from: Contract, to: PerformanceBond, card: 1-n, traversable: false }
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 硬规则（一票否决）
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  rules:
+    hard:
+      # 主体资质类
+      - { id: BlacklistVeto,              label: 主体黑名单否决,     when: "counterparty.status == 黑名单", then: Veto, priority: 200 }
+      - { id: InvalidAuthorizationVeto,   label: 授权无效否决,       when: "signatory.authStatus in [已过期,已撤销] or signatory.authValidTo < today()", then: Veto, priority: 195 }
+      - { id: AbnormalBusinessVeto,       label: 主体非存续否决,     when: "counterparty.businessStatus in [吊销,注销]", then: Veto, priority: 190 }
+      - { id: MissingQualificationVeto,   label: 缺资质否决,         when: "requiredQual(contract.type) and not holdsQualification(status=有效)", then: Veto, priority: 185 }
+      - { id: LegalRepChangedVeto,        label: 法人变更未更新否决,  when: "legalRep.isValid == false or legalRep.since < contract.signDate - 90d", then: Veto, priority: 183 }
+
+      # 合同条款类
+      - { id: MissingMandatoryClauseVeto, label: 缺强制条款否决,     when: "policy.mandatoryClauses 中存在 c 且 not hasClause(clauseType=c)", then: [RaiseRiskFinding(高), Veto], priority: 180 }
+      - { id: PaymentExceedsAmountVeto,   label: 付款超额否决,       when: "sum(paymentTerm.amount) > contract.amount", then: Veto, priority: 170 }
+      - { id: PaymentRatioUnbalancedVeto, label: 付款比例失衡否决,   when: "paymentTerm[预付].ratio > 0.5 and contract.amount > 1000000", then: Veto, priority: 168 }
+      - { id: MissingPerformanceBondVeto, label: 缺履约保函否决,     when: "contract.amount > 5000000 and not securedBy(PerformanceBond)", then: Veto, priority: 165 }
+
+      # 审批流程类
+      - { id: ApprovalGate,               label: 未审批不得生效,     when: "exists approval(decision in [待审,驳回])", then: BlockEffectiveness, priority: 160 }
+      - { id: ConflictOfInterestVeto,     label: 利益冲突否决,       when: "counterparty.isRelatedParty == true and relatedDisclosed == false", then: Veto, priority: 155 }
+
+      # 法规合规类
+      - { id: ExpiredPolicyVeto,          label: 政策过期否决,       when: "policy.effectiveTo != null and policy.effectiveTo < today()", then: Veto, priority: 150 }
+      - { id: MissingDigitalSignatureVeto,label: 未电子签章否决,     when: "contract.amount > 100000 and digitalSignature == false", then: [RequireApproval, Veto], priority: 145 }
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 软规则（风险提示）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    soft:
+      - { id: LowCapitalVsAmount,    label: 实缴远低于合同额,   when: "counterparty.paidCapital < contract.amount * 0.3", then: RaiseRiskFinding(中), priority: 80 }
+      - { id: WeakLiabilityCap,      label: 责任上限缺失/过低,  when: "not hasClause(责任上限) or cap < amount * 0.3", then: RaiseRiskFinding(中), priority: 78 }
+      - { id: AutoRenewalTrap,       label: 自动续约陷阱,       when: "autoRenewal == true and not hasClause(续约终止)", then: RaiseRiskFinding(中), priority: 72 }
+      - { id: LongPaymentTerm,       label: 账期过长,           when: "paymentTerm.paymentDays > 90", then: RaiseRiskFinding(中), priority: 70 }
+      - { id: HighPrepaymentRatio,   label: 高预付比例风险,     when: "paymentTerm[预付].ratio > 0.3 and contract.amount > 500000", then: RaiseRiskFinding(中), priority: 68 }
+      - { id: MilestoneNoAcceptance, label: 里程碑无验收标准,   when: "milestone.acceptanceCriteria == null or length(milestone.acceptanceCriteria) < 20", then: RaiseRiskFinding(低), priority: 65 }
+      - { id: RecentlyEstablished,   label: 成立时间过短,       when: "monthsSince(counterparty.establishedDate) < 12", then: RaiseRiskFinding(低), priority: 60 }
+      - { id: FrequentAmendment,     label: 频繁变更,           when: "count(amendment) >= 3 within 12 months", then: RaiseRiskFinding(低), priority: 55 }
+      - { id: LowCreditScore,        label: 信用评分偏低,       when: "counterparty.creditScore < 60", then: RaiseRiskFinding(中), priority: 52 }
+      - { id: NearExpiryClause,      label: 条款即将到期,       when: "clause.validTo != null and daysUntil(clause.validTo) < 30", then: RaiseRiskFinding(低), priority: 50 }
+      - { id: UnbalancedGoverningLaw,label: 法律适用不对等,     when: "contract.governingLaw != '中华人民共和国法律' and jurisdiction != '我方所在地'", then: RaiseRiskFinding(低), priority: 48 }
+      - { id: MissingConfidentiality,label: 保密条款缺失,       when: "contract.confidentialLevel in [保密|机密] and not hasClause(保密)", then: RaiseRiskFinding(高), priority: 46 }
+
+    weightTable:
+      LowCapitalVsAmount: 0.3
+      WeakLiabilityCap: 0.5
+      AutoRenewalTrap: 0.4
+      LongPaymentTerm: 0.3
+      HighPrepaymentRatio: 0.4
+      MilestoneNoAcceptance: 0.2
+      RecentlyEstablished: 0.2
+      FrequentAmendment: 0.2
+      LowCreditScore: 0.3
+      NearExpiryClause: 0.1
+      UnbalancedGoverningLaw: 0.15
+      MissingConfidentiality: 0.4
+      aggregate: weighted_sum
+      threshold: { attention: 0.4, high: 0.7, critical: 1.0 }
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 约束（数学/逻辑约束）
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  constraints:
+    - { id: PaymentLeContractAmount,    expr: "sum(paymentTerm.amount) <= contract.amount", kind: hard }
+    - { id: MilestoneCoversDeliverable, expr: "forall d in Deliverable exists m: deliveredAt(d,m)", kind: soft, weight: 0.3 }
+    - { id: AmountVsCapital,            expr: "contract.amount <= counterparty.paidCapital * 5", kind: soft, weight: 0.4 }
+    - { id: SignatoryWithinAuth,        expr: "signatory.maxAmount == null or contract.amount <= signatory.maxAmount", kind: hard }
+    - { id: ApprovalDeadline,           expr: "approval.dueDate == null or approval.decidedAt <= approval.dueDate", kind: hard }
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 行为（规则命中后的系统动作）
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  behaviors:
+    - { id: Veto,               label: 否决,         effect: "结论=拒签,短路后续", hook: 审核流程出驳回 }
+    - { id: RaiseRiskFinding,   label: 提出风险项,   effect: "写风险项(等级+证据+溯源)", hook: 风险清单 }
+    - { id: RequireApproval,    label: 要求审批,     effect: "生成审批记录(待审)", hook: 路由审批 }
+    - { id: RequireHumanReview, label: 要求人工复核, effect: "needsHuman=true", hook: 转人工队列 }
+    - { id: ProposeAmendment,   label: 生成修订提案, effect: "产出条款修订提案(不直接改)", hook: 反馈业务 }
+    - { id: BlockEffectiveness, label: 阻止生效,     effect: "合同锁定为审核中", hook: 阻断生效节点 }
+    - { id: Notify,             label: 通知,         effect: "推送相关方", hook: 通知/工单 }
+    - { id: RecordDecision,     label: 记录决策与溯源, effect: "写决策+traceId+版本号", hook: 全程审计与复现 }
+    - { id: EscalateToCFO,      label: 升级CFO审批,  effect: "金额超限转CFO", hook: 高管审批路由 }
+    - { id: RequestGuarantee,   label: 要求追加担保, effect: "生成担保要求", hook: 风控追加流程 }
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 场景定义
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  scenarios:
+    - id: procurement_review
+      label: 采购合同审核
+      description: 适用于企业采购原材料、设备、服务的合同审核
+      contract_types: [采购]
+      active_elements:
+        objects: [Contract, CounterParty, Clause, PaymentTerm, Deliverable, Milestone, Qualification]
+        relations: [signedByCounterparty, hasClause, hasPaymentTerm, hasDeliverable, hasMilestone, holdsQualification]
+        rules: [BlacklistVeto, MissingQualificationVeto, PaymentExceedsAmountVeto, LowCapitalVsAmount, LongPaymentTerm, HighPrepaymentRatio]
+
+    - id: sales_review
+      label: 销售合同审核
+      description: 适用于企业对外销售产品、服务的合同审核
+      contract_types: [销售]
+      active_elements:
+        objects: [Contract, CounterParty, Clause, PaymentTerm, Deliverable, PerformanceBond]
+        relations: [signedByCounterparty, hasClause, hasPaymentTerm, hasDeliverable, securedBy]
+        rules: [MissingPerformanceBondVeto, WeakLiabilityCap, AutoRenewalTrap, MissingConfidentiality]
+
+    - id: service_review
+      label: 服务合同审核
+      description: 适用于技术服务、咨询、外包等服务类合同
+      contract_types: [服务]
+      active_elements:
+        objects: [Contract, CounterParty, Clause, Obligation, Milestone]
+        relations: [signedByCounterparty, hasClause, hasObligation, hasMilestone]
+        rules: [MilestoneNoAcceptance, ApprovalGate, LowCreditScore]
+
+    - id: nda_review
+      label: NDA审核
+      description: 保密协议专项审核
+      contract_types: [NDA]
+      active_elements:
+        objects: [Contract, CounterParty, Clause]
+        relations: [signedByCounterparty, hasClause]
+        rules: [MissingConfidentiality, MissingMandatoryClauseVeto, ConflictOfInterestVeto]
+
+    - id: framework_review
+      label: 框架协议审核
+      description: 年度框架协议、战略合作框架的审核
+      contract_types: [框架]
+      active_elements:
+        objects: [Contract, CounterParty, Clause, Amendment]
+        relations: [signedByCounterparty, hasClause, amendedBy]
+        rules: [AutoRenewalTrap, FrequentAmendment, ExpiredPolicyVeto]
+
+    - id: major_contract_review
+      label: 重大合同复核
+      description: 金额超过 thresholds 的重大合同专项复核
+      contract_types: [采购, 销售, 服务, 框架]
+      active_elements:
+        objects: [Contract, CounterParty, Clause, PaymentTerm, RiskFinding, Approval, PerformanceBond]
+        relations: [signedByCounterparty, hasClause, hasPaymentTerm, hasRisk, approvedVia, securedBy]
+        rules: [BlacklistVeto, MissingMandatoryClauseVeto, PaymentExceedsAmountVeto, MissingPerformanceBondVeto, ConflictOfInterestVeto, LowCapitalVsAmount, WeakLiabilityCap, HighPrepaymentRatio]

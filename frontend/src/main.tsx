@@ -158,6 +158,9 @@ function App() {
   const [loading, setLoading] = React.useState(false);
   const [health, setHealth] = React.useState<{ status: string; neo4j: boolean } | null>(null);
   const [creatingSpace, setCreatingSpace] = React.useState(false);
+  const [deletingSpace, setDeletingSpace] = React.useState<Space | null>(null);
+  const [showImportYaml, setShowImportYaml] = React.useState(false);
+  const [importStatus, setImportStatus] = React.useState<string>("");
 
   const selectedSpace = spaces.find((space) => space.id === selectedSpaceId);
 
@@ -235,6 +238,51 @@ function App() {
     });
     setCreatingSpace(false);
     await bootstrap();
+  }
+
+  async function deleteSpaceById(space: Space) {
+    setLoading(true);
+    try {
+      await api(`/api/spaces/${space.id}`, { method: "DELETE" });
+      setDeletingSpace(null);
+      if (selectedSpaceId === space.id) {
+        setSelectedSpaceId("");
+        setSelected(null);
+      }
+      await bootstrap();
+    } catch (e) {
+      alert("❌ 删除失败: " + String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function importYaml(file: File) {
+    setLoading(true);
+    setImportStatus("正在上传...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`${API_BASE}/api/admin/import-yaml`, {
+        method: "POST",
+        body: formData
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || response.statusText);
+      }
+      const result = await response.json();
+      setImportStatus("导入完成");
+      setShowImportYaml(false);
+      await bootstrap();
+      const counts = result.data?.created || {};
+      alert(`✅ 导入成功！\n对象: ${counts.objects || 0}\n属性: ${counts.properties || 0}\n关系: ${counts.relations || 0}\n行为: ${counts.actions || 0}\n规则: ${counts.rules || 0}`);
+    } catch (e) {
+      setImportStatus("导入失败");
+      alert("❌ 导入失败: " + String(e));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function deactivate(item: ElementItem) {
@@ -332,7 +380,13 @@ function App() {
         </header>
 
         {!selectedSpace ? (
-          <OntologyList spaces={spaces} onSelect={setSelectedSpaceId} onNewSpace={() => setCreatingSpace(true)} />
+          <OntologyList
+            spaces={spaces}
+            onSelect={setSelectedSpaceId}
+            onNewSpace={() => setCreatingSpace(true)}
+            onDeleteSpace={(space) => setDeletingSpace(space)}
+            onImportYaml={() => setShowImportYaml(true)}
+          />
         ) : active === "overview" ? (
           <Overview space={selectedSpace} summary={summary} data={data} onJump={setActive} />
         ) : active === "graph" ? (
@@ -386,6 +440,22 @@ function App() {
           onSave={saveSpace}
         />
       )}
+
+      {deletingSpace && (
+        <DeleteSpaceConfirmDialog
+          space={deletingSpace}
+          onCancel={() => setDeletingSpace(null)}
+          onConfirm={() => deleteSpaceById(deletingSpace)}
+        />
+      )}
+
+      {showImportYaml && (
+        <YamlImportDrawer
+          onClose={() => setShowImportYaml(false)}
+          onImport={importYaml}
+          status={importStatus}
+        />
+      )}
     </div>
   );
 }
@@ -393,45 +463,73 @@ function App() {
 function OntologyList({
   spaces,
   onSelect,
-  onNewSpace
+  onNewSpace,
+  onDeleteSpace,
+  onImportYaml
 }: {
   spaces: Space[];
   onSelect: (id: string) => void;
   onNewSpace: () => void;
+  onDeleteSpace: (space: Space) => void;
+  onImportYaml: () => void;
 }) {
   return (
     <section>
       <div className="ontology-list-toolbar">
         <h2>本体空间列表</h2>
-        <button className="primary-button" onClick={onNewSpace}>
-          <Plus size={16} />
-          新建本体空间
-        </button>
+        <div className="toolbar-actions">
+          <button className="ghost-button" onClick={onImportYaml}>
+            <Database size={16} />
+            从YAML导入
+          </button>
+          <button className="primary-button" onClick={onNewSpace}>
+            <Plus size={16} />
+            新建本体空间
+          </button>
+        </div>
       </div>
       <div className="ontology-list">
         {spaces.length === 0 && (
           <div className="ontology-empty">
             <p>暂无本体空间</p>
-            <button className="primary-button" onClick={onNewSpace}>
-              <Plus size={16} />
-              创建第一个空间
-            </button>
+            <div className="ontology-empty-actions">
+              <button className="primary-button" onClick={onNewSpace}>
+                <Plus size={16} />
+                创建第一个空间
+              </button>
+              <button className="ghost-button" onClick={onImportYaml}>
+                <Database size={16} />
+                从YAML导入
+              </button>
+            </div>
           </div>
         )}
         {spaces.map((space) => (
-          <button className="ontology-card" key={space.id} onClick={() => onSelect(space.id)}>
-            <div className="ontology-card-icon">
-              <GitFork size={24} />
-            </div>
-            <div className="ontology-card-body">
-              <strong>{space.name}</strong>
-              <span>{space.domain}</span>
-              <p>{space.description || "本体资产空间"}</p>
-            </div>
-            <div className="ontology-card-meta">
-              <span className={`status-badge ${space.status}`}>{statusLabels[space.status] ?? space.status}</span>
-            </div>
-          </button>
+          <div className="ontology-card-wrap" key={space.id}>
+            <button className="ontology-card" onClick={() => onSelect(space.id)}>
+              <div className="ontology-card-icon">
+                <GitFork size={24} />
+              </div>
+              <div className="ontology-card-body">
+                <strong>{space.name}</strong>
+                <span>{space.domain}</span>
+                <p>{space.description || "本体资产空间"}</p>
+              </div>
+              <div className="ontology-card-meta">
+                <span className={`status-badge ${space.status}`}>{statusLabels[space.status] ?? space.status}</span>
+              </div>
+            </button>
+            <button
+              className="card-delete-btn"
+              title="删除此空间（级联删除所有关联数据）"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteSpace(space);
+              }}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
         ))}
       </div>
     </section>
@@ -1518,6 +1616,136 @@ function SettingsPanel({ space }: { space: Space | undefined }) {
         </div>
       )}
     </section>
+  );
+}
+
+function DeleteSpaceConfirmDialog({
+  space,
+  onCancel,
+  onConfirm
+}: {
+  space: Space;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>⚠️ 确认删除空间</h3>
+        </div>
+        <div className="modal-body">
+          <p>即将删除空间：<strong>{space.name}</strong>（{space.code}）</p>
+          <p>此操作将级联删除该空间下的所有数据：</p>
+          <ul>
+            <li>所有对象、属性、关系、行为、规则</li>
+            <li>所有引用边</li>
+            <li>所有版本记录和审计日志</li>
+            <li>Neo4j 图数据库中该空间的节点</li>
+          </ul>
+          <p className="form-error">此操作不可恢复！</p>
+        </div>
+        <div className="modal-footer">
+          <button className="ghost-button" onClick={onCancel}>取消</button>
+          <button className="primary-button danger" onClick={onConfirm}>
+            <Trash2 size={16} />
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function YamlImportDrawer({
+  onClose,
+  onImport,
+  status
+}: {
+  onClose: () => void;
+  onImport: (file: File) => void;
+  status: string;
+}) {
+  const [file, setFile] = React.useState<File | null>(null);
+  const [preview, setPreview] = React.useState<string>("");
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+    setFile(selected);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = String(ev.target?.result ?? "");
+      setPreview(text.slice(0, 2000));
+    };
+    reader.readAsText(selected);
+  }
+
+  function handleImport() {
+    if (file) onImport(file);
+  }
+
+  return (
+    <aside className="drawer">
+      <div className="drawer-header">
+        <div>
+          <p className="crumb">系统管理</p>
+          <h2>从 YAML 导入本体</h2>
+        </div>
+        <button onClick={onClose}>关闭</button>
+      </div>
+      <div className="form">
+        <div className="file-upload-zone" onClick={() => fileInputRef.current?.click()}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".yaml,.yml"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+          {file ? (
+            <div>
+              <p><strong>📄 {file.name}</strong></p>
+              <p className="muted">{(file.size / 1024).toFixed(1)} KB</p>
+            </div>
+          ) : (
+            <div>
+              <p><strong>点击选择 YAML 文件</strong></p>
+              <p className="muted">或拖拽文件到此处</p>
+              <p className="muted">支持 .yaml / .yml</p>
+            </div>
+          )}
+        </div>
+
+        {preview && (
+          <label>
+            文件预览（前 2000 字符）
+            <pre className="json-input" style={{ maxHeight: 200 }}>{preview}</pre>
+          </label>
+        )}
+
+        {status && <p className="form-error">{status}</p>}
+
+        <button
+          className="primary-button"
+          onClick={handleImport}
+          disabled={!file}
+        >
+          <Database size={16} />
+          {status ? "导入中..." : "开始导入"}
+        </button>
+
+        <div className="import-hint">
+          <h4>📋 可用场景文件</h4>
+          <ul>
+            <li><code>contract-review.yaml</code> — 合同审核本体（20+对象 / 26关系 / 25规则）</li>
+            <li><code>factoring-risk.yaml</code> — 保理业务风控（12对象 / 16关系 / 20规则）</li>
+            <li><code>battery-scheduling.yaml</code> — 锂电池生产排程（16对象 / 20关系 / 21规则）</li>
+          </ul>
+        </div>
+      </div>
+    </aside>
   );
 }
 
