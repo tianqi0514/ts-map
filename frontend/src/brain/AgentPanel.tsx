@@ -280,19 +280,58 @@ function AgentEditor({
   );
   const [error, setError] = React.useState("");
 
-  async function save() {
-    try {
-      const cfg = JSON.parse(strategyConfig);
-      const payload = {
-        code,
-        name,
-        description,
-        connector_id: connectorId || null,
-        space_id: spaceId || null,
-        strategy_type: strategyType,
-        strategy_config: cfg,
-      };
+  // 从名称自动生成编码
+  function autoCode(n: string): string {
+    return n
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s]/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 50) || "agent_" + Date.now();
+  }
 
+  async function save() {
+    if (!name.trim()) {
+      setError("名称不能为空");
+      return;
+    }
+    let finalCode = code.trim();
+    if (!finalCode) {
+      finalCode = autoCode(name);
+      setCode(finalCode);
+    }
+    if (finalCode.length < 2) {
+      setError("编码至少 2 个字符");
+      return;
+    }
+    if (!connectorId) {
+      setError("请选择数据源连接器");
+      return;
+    }
+    if (!spaceId) {
+      setError("请选择本体空间");
+      return;
+    }
+
+    let cfg: Record<string, unknown>;
+    try {
+      cfg = JSON.parse(strategyConfig);
+    } catch {
+      setError("策略配置必须是合法 JSON");
+      return;
+    }
+
+    const payload = {
+      code: finalCode,
+      name: name.trim(),
+      description: description.trim(),
+      connector_id: connectorId,
+      space_id: spaceId,
+      strategy_type: strategyType,
+      strategy_config: cfg,
+    };
+
+    try {
       if (agent) {
         await api(`/api/brain/agents/${agent.id}`, {
           method: "PUT",
@@ -326,7 +365,18 @@ function AgentEditor({
       <div className="form">
         <label>
           名称
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="如：合同合规审核员" />
+          <input
+            value={name}
+            onChange={(e) => {
+              const v = e.target.value;
+              setName(v);
+              // 如果是新建且 code 为空，自动根据 name 生成 code
+              if (!agent && !code.trim()) {
+                setCode(autoCode(v));
+              }
+            }}
+            placeholder="如：合同合规审核员"
+          />
         </label>
         <label>
           编码
