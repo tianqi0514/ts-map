@@ -138,5 +138,28 @@ class LLMClient:
             }
 
 
+    def chat_stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float | None = None,
+    ):
+        """流式聊天，返回内容生成器"""
+        kwargs: dict[str, Any] = {
+            "model": model or self.model,
+            "temperature": temperature if temperature is not None else self.temperature,
+            "messages": messages,
+            "stream": True,
+        }
+
+        response = self.client.chat.completions.create(**kwargs)
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+            if delta.reasoning_content:
+                yield f"[思考: {delta.reasoning_content}]"
+
+
 def get_llm_client() -> LLMClient:
     return LLMClient()

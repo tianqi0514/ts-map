@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -26,7 +28,7 @@ from app.brain.schemas import (
     SyntheticDataPreviewResponse,
 )
 from app.brain.synthetic_data import generate_preview
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.llm_client import LLMClient
 from app.schemas import ApiResponse
 
@@ -789,7 +791,27 @@ def execute_agent(
         # 自然语言策略：LLM 自主判断
         desc = agent.strategy_config.get("description", "")
         client = LLMClient()
-        if client.is_available() and desc:
+        if not client.is_available():
+            # LLM 未配置，fallback 到规则引擎
+            engine = RuleEngine(db)
+            rule_result = engine.execute(space_id=agent.space_id, data=test_data)
+            result = {
+                "agent_id": agent_id,
+                "agent_name": agent.name,
+                "strategy": "rule_based_fallback",
+                "test_data": test_data,
+                "rule_result": rule_result,
+                "error": "LLM 未配置，请在系统配置中检查 LLM 设置",
+            }
+        elif not desc:
+            result = {
+                "agent_id": agent_id,
+                "agent_name": agent.name,
+                "strategy": "natural_language",
+                "test_data": test_data,
+                "error": "自然语言策略需要配置审核描述（description），请编辑 Agent 补充描述",
+            }
+        else:
             # 获取规则列表供 LLM 参考
             from app.models import ElementStatus, OntologyElement
             rules = (
@@ -815,13 +837,11 @@ def execute_agent(
 输入数据：
 {json.dumps(test_data, ensure_ascii=False, indent=2)}
 
-请根据审核要求和规则，给出审核结论。输出格式：
-{{
-  "conclusion": "通过/建议/阻断",
-  "summary": "审核结论摘要",
-  "findings": ["发现1", "发现2"],
-  "suggestions": ["建议1", "建议2"]
-}}"""
+请根据审核要求和规则，给出审核结论和修改建议。要求：
+1. 先给出总体结论（通过/建议/阻断）
+2. 列出发现的问题
+3. 给出具体的修改建议（每个建议说明修改什么、改成什么）
+4. 用中文回答"""
 
             llm_result = client.chat(
                 messages=[
@@ -842,17 +862,6 @@ def execute_agent(
                 "llm_output": llm_output,
                 "llm_model": llm_result.get("model", ""),
             }
-        else:
-            # LLM 不可用， fallback 到规则引擎
-            engine = RuleEngine(db)
-            rule_result = engine.execute(space_id=agent.space_id, data=test_data)
-            result = {
-                "agent_id": agent_id,
-                "agent_name": agent.name,
-                "strategy": "rule_based_fallback",
-                "test_data": test_data,
-                "rule_result": rule_result,
-            }
     else:
         # 规则策略
         engine = RuleEngine(db)
@@ -871,6 +880,198 @@ def execute_agent(
         }
 
     return ApiResponse(data=result)
+
+
+# ── SSE 流式执行 ──
+
+async def _execute_agent_stream(agent_id: str):
+    """Agent 流式执行生成器 —— 内部管理数据库 Session，避免 SSE 连接期间 Session 被关闭"""
+    db = SessionLocal()
+    try:
+        agent = brain_crud.get_agent(db, agent_id)
+        if not agent:
+            yield f'data: {json.dumps({"type": "error", "message": "Agent not found"})}\n\n'
+            return
+
+        connector = brain_crud.get_connector(db, agent.connector_id) if agent.connector_id else None
+        if not connector:
+            yield f'data: {json.dumps({"type": "error", "message": "Agent 未配置数据源连接器"})}\n\n'
+            return
+
+        if not agent.space_id:
+            yield f'data: {json.dumps({"type": "error", "message": "Agent 未配置本体空间"})}\n\n'
+            return
+
+        # 1. 开始
+        yield f'data: {json.dumps({"type": "start", "agent_name": agent.name, "strategy": agent.strategy_type})}\n\n'
+
+        # 2. 生成合成数据
+        preview = generate_preview(db, agent.connector_id, count=1)
+        test_data = preview["records"][0] if preview["records"] else {}
+        yield f'data: {json.dumps({"type": "data_generated", "data": test_data})}\n\n'
+
+        # 3. 执行分析
+        if agent.strategy_type == "natural_language":
+            desc = agent.strategy_config.get("description", "")
+            client = LLMClient()
+            if not client.is_available():
+                yield f'data: {json.dumps({"type": "error", "message": "LLM 未配置，请在系统配置中检查 LLM 设置"})}\n\n'
+                return
+            if not desc:
+                yield f'data: {json.dumps({"type": "error", "message": "自然语言策略需要配置审核描述（description），请编辑 Agent 补充描述"})}\n\n'
+                return
+
+            # 获取规则列表
+            from app.models import ElementStatus, OntologyElement
+            rules = (
+                db.query(OntologyElement)
+                .filter(
+                    OntologyElement.space_id == agent.space_id,
+                    OntologyElement.resource_type == "rule",
+                    OntologyElement.status == ElementStatus.active,
+                )
+                .all()
+            )
+            rules_text = "\n".join([
+                f"- {r.name}: {r.payload.get('condition', '')} -> {r.payload.get('result', '')}"
+                for r in rules[:15]
+            ])
+
+            system_prompt = f"""你是一个企业审核 Agent。
+审核要求：{desc}
+
+系统规则（供参考）：
+{rules_text}
+
+输入数据：
+{json.dumps(test_data, ensure_ascii=False, indent=2)}
+
+请根据审核要求和规则，给出审核结论和修改建议。要求：
+1. 先给出总体结论（通过/建议/阻断）
+2. 列出发现的问题
+3. 给出具体的修改建议（每个建议说明修改什么、改成什么）
+4. 用中文回答"""
+
+            yield f'data: {json.dumps({"type": "llm_thinking"})}\n\n'
+
+            content = ""
+            for chunk in client.chat_stream(messages=[{"role": "system", "content": system_prompt}]):
+                content += chunk
+                yield f'data: {json.dumps({"type": "llm_chunk", "content": chunk})}\n\n'
+
+            # 解析 LLM 输出
+            try:
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    llm_output = json.loads(json_match.group())
+                else:
+                    llm_output = {
+                        "conclusion": "建议",
+                        "summary": content[:200],
+                        "findings": [],
+                        "suggestions": [],
+                    }
+            except json.JSONDecodeError:
+                llm_output = {
+                    "conclusion": "建议",
+                    "summary": content[:200],
+                    "findings": [],
+                    "suggestions": [],
+                }
+
+            _final = json.dumps({"type": "complete", "final_result": {
+                "agent_id": agent_id,
+                "agent_name": agent.name,
+                "strategy": "natural_language",
+                "test_data": test_data,
+                "llm_output": llm_output,
+                "llm_full_response": content,
+            }})
+            yield f'data: {_final}\n\n'
+        else:
+            # 规则策略
+            yield f'data: {json.dumps({"type": "rule_executing"})}\n\n'
+            engine = RuleEngine(db)
+            rule_ids = agent.strategy_config.get("rule_ids")
+            rule_result = engine.execute(
+                space_id=agent.space_id,
+                data=test_data,
+                rule_ids=rule_ids if rule_ids else None,
+            )
+
+            yield f'data: {json.dumps({"type": "rule_result", "result": rule_result})}\n\n'
+
+            # 如果有命中规则，调用 LLM 生成修改建议
+            if rule_result["hits"]:
+                client = LLMClient()
+                if client.is_available():
+                    hits_text = "\n".join([
+                        f"- {h['rule_name']}: {h['condition']} -> {h['result']}"
+                        for h in rule_result["hits"]
+                    ])
+
+                    suggest_prompt = f"""你是一个企业审核专家。
+
+以下数据命中了审核规则：
+
+输入数据：
+{json.dumps(test_data, ensure_ascii=False, indent=2)}
+
+命中规则：
+{hits_text}
+
+请基于以上规则命中情况，给出具体的修改建议。
+要求：
+1. 每个建议说明"修改哪个字段"
+2. 说明"修改成什么值"
+3. 说明"为什么这样修改"
+4. 用中文回答，格式清晰"""
+
+                    yield f'data: {json.dumps({"type": "suggestion_generating"})}\n\n'
+                    suggestion_content = ""
+                    for chunk in client.chat_stream(messages=[{"role": "system", "content": suggest_prompt}]):
+                        suggestion_content += chunk
+                        yield f'data: {json.dumps({"type": "suggestion_chunk", "content": chunk})}\n\n'
+
+                    _final = json.dumps({"type": "complete", "final_result": {
+                        "agent_id": agent_id,
+                        "agent_name": agent.name,
+                        "strategy": "rule_based",
+                        "test_data": test_data,
+                        "rule_result": rule_result,
+                        "suggestions": suggestion_content,
+                    }})
+                    yield f'data: {_final}\n\n'
+                else:
+                    _final = json.dumps({"type": "complete", "final_result": {
+                        "agent_id": agent_id,
+                        "agent_name": agent.name,
+                        "strategy": "rule_based",
+                        "test_data": test_data,
+                        "rule_result": rule_result,
+                    }})
+                    yield f'data: {_final}\n\n'
+            else:
+                _final = json.dumps({"type": "complete", "final_result": {
+                    "agent_id": agent_id,
+                    "agent_name": agent.name,
+                    "strategy": "rule_based",
+                    "test_data": test_data,
+                    "rule_result": rule_result,
+                }})
+                yield f'data: {_final}\n\n'
+    finally:
+        db.close()
+
+
+@router.get("/agents/{agent_id}/execute-stream")
+async def execute_agent_stream(agent_id: str):
+    """Agent 流式执行（SSE）"""
+    return StreamingResponse(
+        _execute_agent_stream(agent_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
 
 
 class BrainAgentUpdatePayload(BaseModel):
