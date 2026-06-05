@@ -13,16 +13,20 @@ import {
   FileClock,
   GitBranch,
   GitFork,
+  LayoutList,
+  ListChecks,
   Network,
   Plus,
   RefreshCw,
+  Scale,
   Search,
+  Settings,
   Trash2,
   WandSparkles
 } from "lucide-react";
 import "./styles.css";
 
-type SectionKey = "overview" | "objects" | "relations" | "actions" | "graph" | "versions";
+type SectionKey = "overview" | "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules" | "graph" | "versions" | "settings";
 
 type Space = {
   id: string;
@@ -76,6 +80,7 @@ type OntologyData = {
   actions: ElementItem[];
   properties: ElementItem[];
   rules: ElementItem[];
+  scenarios: ElementItem[];
   versions: VersionRecord[];
 };
 
@@ -105,22 +110,32 @@ const sectionItems: Array<{
 }> = [
   { key: "overview", label: "概览", icon: Activity },
   { key: "objects", label: "对象", icon: Boxes },
+  { key: "properties", label: "属性字典", icon: ListChecks },
   { key: "relations", label: "关系", icon: GitBranch },
   { key: "actions", label: "行为", icon: WandSparkles },
+  { key: "scenarios", label: "场景", icon: LayoutList },
+  { key: "rules", label: "规则", icon: Scale },
   { key: "graph", label: "本体图谱", icon: Network },
-  { key: "versions", label: "版本记录", icon: FileClock }
+  { key: "versions", label: "版本记录", icon: FileClock },
+  { key: "settings", label: "设置", icon: Settings }
 ];
 
 const resourceTitle: Record<string, string> = {
   objects: "对象",
+  properties: "属性",
   relations: "关系",
-  actions: "行为"
+  actions: "行为",
+  scenarios: "场景",
+  rules: "规则"
 };
 
 const resourceDefaults: Record<string, Record<string, unknown>> = {
   objects: { key: "", fields: {} },
+  properties: { object_code: "", data_type: "string", required: false },
   relations: { source_code: "", target_codes: [], cardinality: "" },
-  actions: { hook: "", effect: "", rules: [] }
+  actions: { hook: "", effect: "", rules: [] },
+  scenarios: { contract_types: [], active_elements: [] },
+  rules: { rule_type: "硬规则", condition: "", result: "", actions: [] }
 };
 
 function App() {
@@ -134,6 +149,7 @@ function App() {
     actions: [],
     properties: [],
     rules: [],
+    scenarios: [],
     versions: []
   });
   const [keyword, setKeyword] = React.useState("");
@@ -141,6 +157,7 @@ function App() {
   const [editing, setEditing] = React.useState<ElementItem | "new" | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [health, setHealth] = React.useState<{ status: string; neo4j: boolean } | null>(null);
+  const [creatingSpace, setCreatingSpace] = React.useState(false);
 
   const selectedSpace = spaces.find((space) => space.id === selectedSpaceId);
 
@@ -172,17 +189,18 @@ function App() {
   async function loadOntology(spaceId: string) {
     setLoading(true);
     try {
-      const [summaryRes, objects, relations, actions, properties, rules, versions] = await Promise.all([
+      const [summaryRes, objects, relations, actions, properties, rules, scenarios, versions] = await Promise.all([
         api<Summary>(`/api/spaces/${spaceId}/summary`),
         loadResource(spaceId, "objects"),
         loadResource(spaceId, "relations"),
         loadResource(spaceId, "actions"),
         loadResource(spaceId, "properties"),
         loadResource(spaceId, "rules"),
+        loadResource(spaceId, "scenarios"),
         api<VersionRecord[]>(`/api/spaces/${spaceId}/versions`).then((res) => res.data)
       ]);
       setSummary(summaryRes.data);
-      setData({ objects, relations, actions, properties, rules, versions });
+      setData({ objects, relations, actions, properties, rules, scenarios, versions });
     } finally {
       setLoading(false);
     }
@@ -208,6 +226,15 @@ function App() {
     }
     setEditing(null);
     await loadOntology(selectedSpaceId);
+  }
+
+  async function saveSpace(form: { code: string; name: string; domain: string; description: string }) {
+    await api<Space>("/api/spaces", {
+      method: "POST",
+      body: JSON.stringify(form)
+    });
+    setCreatingSpace(false);
+    await bootstrap();
   }
 
   async function deactivate(item: ElementItem) {
@@ -305,13 +332,15 @@ function App() {
         </header>
 
         {!selectedSpace ? (
-          <OntologyList spaces={spaces} onSelect={setSelectedSpaceId} />
+          <OntologyList spaces={spaces} onSelect={setSelectedSpaceId} onNewSpace={() => setCreatingSpace(true)} />
         ) : active === "overview" ? (
           <Overview space={selectedSpace} summary={summary} data={data} onJump={setActive} />
         ) : active === "graph" ? (
           <OntologyGraph data={data} />
         ) : active === "versions" ? (
           <VersionTable versions={data.versions} loading={loading} />
+        ) : active === "settings" ? (
+          <SettingsPanel space={selectedSpace} />
         ) : isCrudSection(active) ? (
           <ResourcePanel
             title={resourceTitle[active]}
@@ -350,25 +379,61 @@ function App() {
           onSave={saveElement}
         />
       )}
+
+      {creatingSpace && (
+        <CreateSpaceDrawer
+          onClose={() => setCreatingSpace(false)}
+          onSave={saveSpace}
+        />
+      )}
     </div>
   );
 }
 
-function OntologyList({ spaces, onSelect }: { spaces: Space[]; onSelect: (id: string) => void }) {
+function OntologyList({
+  spaces,
+  onSelect,
+  onNewSpace
+}: {
+  spaces: Space[];
+  onSelect: (id: string) => void;
+  onNewSpace: () => void;
+}) {
   return (
-    <section className="ontology-list">
-      {spaces.map((space) => (
-        <button className="ontology-card" key={space.id} onClick={() => onSelect(space.id)}>
-          <div className="ontology-card-icon">
-            <GitFork size={24} />
-          </div>
-          <div>
-            <strong>{space.name}</strong>
-            <span>{space.domain}</span>
-            <p>{space.description || "本体资产空间"}</p>
-          </div>
+    <section>
+      <div className="ontology-list-toolbar">
+        <h2>本体空间列表</h2>
+        <button className="primary-button" onClick={onNewSpace}>
+          <Plus size={16} />
+          新建本体空间
         </button>
-      ))}
+      </div>
+      <div className="ontology-list">
+        {spaces.length === 0 && (
+          <div className="ontology-empty">
+            <p>暂无本体空间</p>
+            <button className="primary-button" onClick={onNewSpace}>
+              <Plus size={16} />
+              创建第一个空间
+            </button>
+          </div>
+        )}
+        {spaces.map((space) => (
+          <button className="ontology-card" key={space.id} onClick={() => onSelect(space.id)}>
+            <div className="ontology-card-icon">
+              <GitFork size={24} />
+            </div>
+            <div className="ontology-card-body">
+              <strong>{space.name}</strong>
+              <span>{space.domain}</span>
+              <p>{space.description || "本体资产空间"}</p>
+            </div>
+            <div className="ontology-card-meta">
+              <span className={`status-badge ${space.status}`}>{statusLabels[space.status] ?? space.status}</span>
+            </div>
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
@@ -614,7 +679,7 @@ function DetailDrawer({
         <pre>{JSON.stringify(item.payload, null, 2)}</pre>
       </Section>
       <Section title="影响范围">
-        <pre>{JSON.stringify(impact, null, 2)}</pre>
+        <ImpactView impact={impact} />
       </Section>
     </aside>
   );
@@ -635,6 +700,73 @@ function MiniTable({ rows, empty }: { rows: Array<{ name: string; code: string; 
   );
 }
 
+function ImpactView({ impact }: { impact: Record<string, unknown> | null }) {
+  if (!impact) {
+    return <p className="muted">加载影响范围中...</p>;
+  }
+
+  const incoming = (impact.incoming as Array<{ edge_type: string; source: { code: string; name: string; resource_type: string; status: string } | null }> | undefined) ?? [];
+  const outgoing = (impact.outgoing as Array<{ edge_type: string; target: { code: string; name: string; resource_type: string; status: string } | null }> | undefined) ?? [];
+
+  const hasData = incoming.length > 0 || outgoing.length > 0;
+  if (!hasData) {
+    return <p className="muted">暂无引用关系</p>;
+  }
+
+  return (
+    <div className="impact-view">
+      {incoming.length > 0 && (
+        <div className="impact-group">
+          <h4>被引用（{incoming.length}）</h4>
+          <div className="impact-rows">
+            {incoming.map((item, i) => (
+              <div key={`in-${i}`} className="impact-row">
+                <span className="impact-direction">←</span>
+                <span className="impact-edge">{item.edge_type}</span>
+                <span className="impact-target">
+                  {item.source ? (
+                    <>
+                      <strong>{item.source.name}</strong>
+                      <code>{item.source.code}</code>
+                      <span className={`status-badge mini ${item.source.status}`}>{statusLabels[item.source.status] ?? item.source.status}</span>
+                    </>
+                  ) : (
+                    "未知来源"
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {outgoing.length > 0 && (
+        <div className="impact-group">
+          <h4>引用他人（{outgoing.length}）</h4>
+          <div className="impact-rows">
+            {outgoing.map((item, i) => (
+              <div key={`out-${i}`} className="impact-row">
+                <span className="impact-direction">→</span>
+                <span className="impact-edge">{item.edge_type}</span>
+                <span className="impact-target">
+                  {item.target ? (
+                    <>
+                      <strong>{item.target.name}</strong>
+                      <code>{item.target.code}</code>
+                      <span className={`status-badge mini ${item.target.status}`}>{statusLabels[item.target.status] ?? item.target.status}</span>
+                    </>
+                  ) : (
+                    "未知目标"
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditDrawer({
   item,
   resource,
@@ -642,7 +774,7 @@ function EditDrawer({
   onSave
 }: {
   item: ElementItem | null;
-  resource: "objects" | "relations" | "actions";
+  resource: "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules";
   onClose: () => void;
   onSave: (value: ElementFormValue) => void;
 }) {
@@ -1235,15 +1367,18 @@ function KeyValue({ label, value }: { label: string; value: string }) {
   );
 }
 
-function isCrudSection(value: SectionKey): value is "objects" | "relations" | "actions" {
-  return value === "objects" || value === "relations" || value === "actions";
+function isCrudSection(value: SectionKey): value is "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules" {
+  return value === "objects" || value === "properties" || value === "relations" || value === "actions" || value === "scenarios" || value === "rules";
 }
 
 function resourcePath(type: string) {
   const map: Record<string, string> = {
     object: "objects",
+    property: "properties",
     relation: "relations",
-    action: "actions"
+    action: "actions",
+    scenario: "scenarios",
+    rule: "rules"
   };
   return map[type] ?? "";
 }
@@ -1254,6 +1389,7 @@ function resourceTypeLabel(type: string) {
     property: "属性",
     relation: "关系",
     action: "行为",
+    scenario: "场景",
     rule: "规则"
   };
   return map[type] ?? type;
@@ -1285,6 +1421,104 @@ function formatTime(value: string) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function CreateSpaceDrawer({
+  onClose,
+  onSave
+}: {
+  onClose: () => void;
+  onSave: (value: { code: string; name: string; domain: string; description: string }) => void;
+}) {
+  const [code, setCode] = React.useState("");
+  const [name, setName] = React.useState("");
+  const [domain, setDomain] = React.useState("contract_review");
+  const [description, setDescription] = React.useState("");
+  const [error, setError] = React.useState("");
+
+  function submit() {
+    if (!code.trim() || code.length < 2) {
+      setError("编码至少2个字符");
+      return;
+    }
+    if (!name.trim()) {
+      setError("名称必填");
+      return;
+    }
+    setError("");
+    onSave({ code, name, domain, description });
+  }
+
+  return (
+    <aside className="drawer">
+      <div className="drawer-header">
+        <div>
+          <p className="crumb">本体空间</p>
+          <h2>新建本体空间</h2>
+        </div>
+        <button onClick={onClose}>关闭</button>
+      </div>
+      <div className="form">
+        <label>
+          空间名称
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="如：销售合同审核" />
+        </label>
+        <label>
+          空间编码
+          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="如：sales_contract" />
+        </label>
+        <label>
+          业务域
+          <select value={domain} onChange={(e) => setDomain(e.target.value)}>
+            <option value="contract_review">合同审核</option>
+            <option value="risk_management">风险管理</option>
+            <option value="compliance">合规管理</option>
+            <option value="custom">自定义</option>
+          </select>
+        </label>
+        <label>
+          描述
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="描述这个本体空间的业务范围..." />
+        </label>
+        {error && <p className="form-error">{error}</p>}
+        <button className="primary-button" onClick={submit}>
+          <Plus size={16} />
+          创建空间
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function SettingsPanel({ space }: { space: Space | undefined }) {
+  return (
+    <section className="dashboard">
+      <div className="workspace-band">
+        <div>
+          <p className="eyebrow">空间设置</p>
+          <h2>{space?.name ?? "未选择空间"}</h2>
+          <p>管理空间配置、成员权限和发布策略</p>
+        </div>
+      </div>
+      <div className="shortcut-grid">
+        <Shortcut icon={Database} label="空间信息" value="查看和编辑空间基本信息" onClick={() => {}} />
+        <Shortcut icon={Settings} label="成员管理" value="添加和管理空间成员" onClick={() => {}} />
+        <Shortcut icon={Scale} label="审批策略" value="配置发布审批流程" onClick={() => {}} />
+        <Shortcut icon={FileClock} label="审计日志" value="查看空间操作记录" onClick={() => {}} />
+      </div>
+      {space && (
+        <div className="settings-section">
+          <h3>空间基本信息</h3>
+          <div className="settings-card">
+            <KeyValue label="空间编码" value={space.code} />
+            <KeyValue label="业务域" value={space.domain} />
+            <KeyValue label="状态" value={statusLabels[space.status] ?? space.status} />
+            <KeyValue label="描述" value={space.description || "-"} />
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

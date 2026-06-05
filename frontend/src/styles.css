@@ -722,6 +722,192 @@ pre {
   margin: 0;
 }
 
+/* ── 本体列表工具栏 ── */
+.ontology-list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.ontology-list-toolbar h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.ontology-empty {
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  padding: 60px 20px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+  grid-column: 1 / -1;
+}
+
+.ontology-empty p {
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ── 本体卡片增强 ── */
+.ontology-card {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 14px;
+  min-height: 150px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ontology-card-body strong {
+  display: block;
+  font-size: 17px;
+}
+
+.ontology-card-body span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.ontology-card-body p {
+  color: var(--muted);
+  margin: 10px 0 0;
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.ontology-card-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #f2f3f4;
+  color: var(--muted);
+}
+
+.status-badge.active {
+  background: rgba(82, 196, 26, 0.1);
+  color: var(--success);
+}
+
+.status-badge.draft {
+  background: rgba(76, 125, 249, 0.1);
+  color: var(--tech-blue);
+}
+
+.status-badge.pending {
+  background: rgba(250, 140, 22, 0.1);
+  color: var(--warning);
+}
+
+.status-badge.inactive,
+.status-badge.deprecated {
+  background: rgba(96, 96, 96, 0.1);
+  color: var(--muted);
+}
+
+.status-badge.mini {
+  min-height: 20px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+/* ── 影响范围可视化 ── */
+.impact-view {
+  display: grid;
+  gap: 16px;
+}
+
+.impact-group h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.impact-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.impact-row {
+  display: grid;
+  grid-template-columns: 24px 120px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f9f9fc;
+}
+
+.impact-direction {
+  font-size: 16px;
+  color: var(--tech-blue);
+  font-weight: 700;
+  text-align: center;
+}
+
+.impact-edge {
+  font-size: 12px;
+  color: var(--ai-purple);
+  font-weight: 600;
+}
+
+.impact-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.impact-target code {
+  font-size: 12px;
+}
+
+/* ── 设置面板 ── */
+.settings-section {
+  margin-top: 18px;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.settings-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.settings-card .key-value {
+  grid-template-columns: 100px 1fr;
+}
+
+.settings-card .key-value:last-child {
+  margin-bottom: 0;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
