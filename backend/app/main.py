@@ -9,7 +9,15 @@ from app.config import get_settings
 from app.database import Base, SessionLocal, engine, get_db
 from app.graph import GraphProjector
 from app.models import OntologyElement, OntologySpace, VersionRecord
-from app.schemas import ApiResponse, ElementCreate, ElementUpdate, SpaceCreate
+from app.schemas import (
+    ApiResponse,
+    ElementCreate,
+    ElementUpdate,
+    FunctionTestRequest,
+    QueryCapabilityTestRequest,
+    SpaceCreate,
+    SpaceUpdate,
+)
 
 settings = get_settings()
 app = FastAPI(title="传神智谱 API", version="0.1.0")
@@ -58,10 +66,35 @@ def create_space(payload: SpaceCreate, db: Session = Depends(get_db)) -> ApiResp
     return ApiResponse(data=crud.serialize_space(crud.create_space(db, payload)))
 
 
+@app.put("/api/spaces/{space_id}")
+def update_space(space_id: str, payload: SpaceUpdate, db: Session = Depends(get_db)) -> ApiResponse:
+    return ApiResponse(data=crud.serialize_space(crud.update_space(db, space_id, payload)))
+
+
+@app.post("/api/spaces/{space_id}/deactivate")
+def deactivate_space(space_id: str, db: Session = Depends(get_db)) -> ApiResponse:
+    return ApiResponse(data=crud.serialize_space(crud.deactivate_space(db, space_id)))
+
+
 @app.post("/api/spaces/initialize-contract-template")
 def initialize_contract_template(db: Session = Depends(get_db)) -> ApiResponse:
     space = crud.initialize_contract_template(db, projector)
     return ApiResponse(data=crud.serialize_space(space))
+
+
+@app.get("/api/ontology/{space_id}/graph")
+def get_ontology_graph(space_id: str, db: Session = Depends(get_db)) -> ApiResponse:
+    return ApiResponse(data=crud.ontology_graph(db, space_id))
+
+
+@app.post("/api/ontology/{space_id}/validation/run")
+def run_validation(space_id: str, db: Session = Depends(get_db)) -> ApiResponse:
+    return ApiResponse(data=crud.run_validation(db, space_id))
+
+
+@app.post("/api/ontology/{space_id}/publish")
+def publish_space(space_id: str, db: Session = Depends(get_db)) -> ApiResponse:
+    return ApiResponse(data=crud.publish_space(db, space_id))
 
 
 @app.get("/api/ontology/{space_id}/{resource}")
@@ -90,6 +123,28 @@ def create_element(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     element = crud.create_element(db, projector, space_id, resource, payload)
+    return ApiResponse(data=crud.serialize_element(element))
+
+
+@app.post("/api/ontology/{space_id}/objects/{object_id}/properties")
+def create_object_property(
+    space_id: str,
+    object_id: str,
+    payload: ElementCreate,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    element = crud.create_object_property(db, projector, space_id, object_id, payload)
+    return ApiResponse(data=crud.serialize_element(element))
+
+
+@app.post("/api/ontology/{space_id}/actions/{action_id}/rules")
+def create_action_rule(
+    space_id: str,
+    action_id: str,
+    payload: ElementCreate,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    element = crud.create_action_rule(db, projector, space_id, action_id, payload)
     return ApiResponse(data=crud.serialize_element(element))
 
 
@@ -146,6 +201,30 @@ def get_local_graph(
     if projector and projector.is_available():
         return ApiResponse(data=projector.local_graph(element_id, depth))
     return ApiResponse(data={"nodes": [], "edges": [], "message": "图视图同步中或 Neo4j 不可用"})
+
+
+@app.post("/api/ontology/{space_id}/functions/{function_id}/test")
+def test_function(
+    space_id: str,
+    function_id: str,
+    payload: FunctionTestRequest,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    result = crud.run_function_test(db, space_id, function_id, payload.input_data, payload.expected)
+    return ApiResponse(data=result)
+
+
+@app.post("/api/ontology/{space_id}/query-capabilities/{capability_id}/test")
+def test_query_capability(
+    space_id: str,
+    capability_id: str,
+    payload: QueryCapabilityTestRequest,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    result = crud.run_query_capability_test(
+        db, projector, space_id, capability_id, payload.inputs, payload.limit
+    )
+    return ApiResponse(data=result)
 
 
 class GraphTraversePayload(BaseModel):

@@ -18,3 +18,7 @@ dist/
 postgres_data/
 neo4j_data/
 neo4j_logs/
+
+# Document render QA artifacts
+docs/**/rendered/
+docs/**/rendered-*/

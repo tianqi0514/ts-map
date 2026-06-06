@@ -16,6 +16,9 @@ LABELS = {
     "action": "ActionType",
     "scenario": "Scenario",
     "rule": "Rule",
+    "function": "Function",
+    "query_capability": "QueryCapability",
+    "validation_case": "ValidationCase",
     "setting": "Setting",
 }
 

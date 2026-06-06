@@ -21,6 +21,14 @@ class SpaceCreate(BaseModel):
     description: str = ""
 
 
+class SpaceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    domain: str | None = None
+    template_code: str | None = None
+    description: str | None = None
+    status: str | None = None
+
+
 class SpaceRead(SpaceCreate):
     id: str
     status: str
@@ -52,6 +60,16 @@ class ElementUpdate(BaseModel):
     status: ElementStatus | None = None
     payload: dict[str, Any] | None = None
     references: list[ReferenceInput] | None = None
+
+
+class FunctionTestRequest(BaseModel):
+    input_data: Any = Field(default_factory=dict)
+    expected: Any = None
+
+
+class QueryCapabilityTestRequest(BaseModel):
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    limit: int = Field(default=50, ge=1, le=500)
 
 
 class ElementRead(BaseModel):

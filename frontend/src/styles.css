@@ -1278,3 +1278,152 @@ pre {
   max-height: 280px;
   overflow-y: auto;
 }
+
+.inline-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inline-manager-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.inline-manager-toolbar span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mini-table.actionable > div {
+  grid-template-columns: minmax(110px, 1.1fr) minmax(88px, 0.8fr) minmax(140px, 1fr) auto;
+}
+
+.mini-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mini-row-actions button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.inline-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.inline-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inline-form input,
+.inline-form select,
+.inline-form textarea {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.inline-form textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.inline-form .checkbox-label {
+  grid-column: span 2;
+}
+
+.inline-form-actions {
+  grid-column: span 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.validation-panel .workspace-band {
+  margin-bottom: 16px;
+}
+
+.validation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.validation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 112px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.validation-card strong {
+  font-size: 13px;
+}
+
+.validation-card span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.validation-card.passed {
+  border-color: #b7dfca;
+  background: #f1faf5;
+}
+
+.validation-card.passed strong {
+  color: #1a7f4f;
+}
+
+.validation-card.failed {
+  border-color: #f0c0c0;
+  background: #fff5f5;
+}
+
+.validation-card.failed strong {
+  color: #b42318;
+}
+
+@media (max-width: 900px) {
+  .inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-form .checkbox-label,
+  .inline-form-actions {
+    grid-column: auto;
+  }
+
+  .mini-table.actionable > div {
+    grid-template-columns: 1fr;
+  }
+}

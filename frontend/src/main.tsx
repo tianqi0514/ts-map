@@ -16,6 +16,8 @@ import {
   LayoutList,
   ListChecks,
   Network,
+  PackageCheck,
+  PlayCircle,
   Plus,
   RefreshCw,
   Route,
@@ -27,7 +29,20 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-type SectionKey = "overview" | "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules" | "graph" | "traverse" | "versions" | "settings";
+type SectionKey =
+  | "overview"
+  | "objects"
+  | "relations"
+  | "functions"
+  | "actions"
+  | "queries"
+  | "graph"
+  | "traverse"
+  | "validation"
+  | "versions"
+  | "settings";
+
+type CrudResource = "objects" | "relations" | "functions" | "actions" | "query-capabilities";
 
 type Space = {
   id: string;
@@ -81,7 +96,8 @@ type OntologyData = {
   actions: ElementItem[];
   properties: ElementItem[];
   rules: ElementItem[];
-  scenarios: ElementItem[];
+  functions: ElementItem[];
+  queryCapabilities: ElementItem[];
   versions: VersionRecord[];
 };
 
@@ -111,13 +127,13 @@ const sectionItems: Array<{
 }> = [
   { key: "overview", label: "概览", icon: Activity },
   { key: "objects", label: "对象", icon: Boxes },
-  { key: "properties", label: "属性字典", icon: ListChecks },
   { key: "relations", label: "关系", icon: GitBranch },
-  { key: "actions", label: "行为", icon: WandSparkles },
-  { key: "scenarios", label: "场景", icon: LayoutList },
-  { key: "rules", label: "规则", icon: Scale },
+  { key: "functions", label: "函数与指标", icon: ListChecks },
+  { key: "actions", label: "行为与规则", icon: WandSparkles },
+  { key: "queries", label: "查询能力", icon: PlayCircle },
   { key: "graph", label: "本体图谱", icon: Network },
   { key: "traverse", label: "图遍历", icon: Route },
+  { key: "validation", label: "验证与发布", icon: PackageCheck },
   { key: "versions", label: "版本记录", icon: FileClock },
   { key: "settings", label: "设置", icon: Settings }
 ];
@@ -127,8 +143,9 @@ const resourceTitle: Record<string, string> = {
   properties: "属性",
   relations: "关系",
   actions: "行为",
-  scenarios: "场景",
-  rules: "规则"
+  rules: "规则",
+  functions: "函数与指标",
+  "query-capabilities": "查询能力"
 };
 
 const resourceDefaults: Record<string, Record<string, unknown>> = {
@@ -136,8 +153,9 @@ const resourceDefaults: Record<string, Record<string, unknown>> = {
   properties: { object_code: "", data_type: "string", required: false },
   relations: { source_code: "", target_codes: [], cardinality: "" },
   actions: { hook: "", effect: "", rules: [] },
-  scenarios: { contract_types: [], active_elements: [] },
-  rules: { rule_type: "硬规则", condition: "", result: "", actions: [] }
+  rules: { rule_type: "硬规则", condition: "", result: "", actions: [] },
+  functions: { function_type: "count", value_field: "", test_cases: [] },
+  "query-capabilities": { query_kind: "ontology_graph", inputs: {}, output_schema: {} }
 };
 
 function App() {
@@ -151,7 +169,8 @@ function App() {
     actions: [],
     properties: [],
     rules: [],
-    scenarios: [],
+    functions: [],
+    queryCapabilities: [],
     versions: []
   });
   const [keyword, setKeyword] = React.useState("");
@@ -194,18 +213,19 @@ function App() {
   async function loadOntology(spaceId: string) {
     setLoading(true);
     try {
-      const [summaryRes, objects, relations, actions, properties, rules, scenarios, versions] = await Promise.all([
+      const [summaryRes, objects, relations, actions, properties, rules, functions, queryCapabilities, versions] = await Promise.all([
         api<Summary>(`/api/spaces/${spaceId}/summary`),
         loadResource(spaceId, "objects"),
         loadResource(spaceId, "relations"),
         loadResource(spaceId, "actions"),
         loadResource(spaceId, "properties"),
         loadResource(spaceId, "rules"),
-        loadResource(spaceId, "scenarios"),
+        loadResource(spaceId, "functions"),
+        loadResource(spaceId, "query-capabilities"),
         api<VersionRecord[]>(`/api/spaces/${spaceId}/versions`).then((res) => res.data)
       ]);
       setSummary(summaryRes.data);
-      setData({ objects, relations, actions, properties, rules, scenarios, versions });
+      setData({ objects, relations, actions, properties, rules, functions, queryCapabilities, versions });
     } finally {
       setLoading(false);
     }
@@ -218,13 +238,14 @@ function App() {
 
   async function saveElement(form: ElementFormValue) {
     if (!selectedSpaceId || !isCrudSection(active)) return;
+    const resource = sectionResource(active);
     if (editing === "new") {
-      await api(`/api/ontology/${selectedSpaceId}/${active}`, {
+      await api(`/api/ontology/${selectedSpaceId}/${resource}`, {
         method: "POST",
         body: JSON.stringify(form)
       });
     } else if (editing) {
-      await api(`/api/ontology/${selectedSpaceId}/${active}/${editing.id}`, {
+      await api(`/api/ontology/${selectedSpaceId}/${resource}/${editing.id}`, {
         method: "PUT",
         body: JSON.stringify(form)
       });
@@ -289,19 +310,25 @@ function App() {
 
   async function deactivate(item: ElementItem) {
     if (!selectedSpaceId || !isCrudSection(active)) return;
-    await api(`/api/ontology/${selectedSpaceId}/${active}/${item.id}/deactivate`, { method: "POST" });
-    await loadOntology(selectedSpaceId);
+    const resource = sectionResource(active);
+    try {
+      await api(`/api/ontology/${selectedSpaceId}/${resource}/${item.id}/deactivate`, { method: "POST" });
+      await loadOntology(selectedSpaceId);
+    } catch (e) {
+      alert("停用失败：" + String(e));
+    }
   }
 
   async function copy(item: ElementItem) {
     if (!selectedSpaceId || !isCrudSection(active)) return;
-    await api(`/api/ontology/${selectedSpaceId}/${active}/${item.id}/copy`, { method: "POST" });
+    const resource = sectionResource(active);
+    await api(`/api/ontology/${selectedSpaceId}/${resource}/${item.id}/copy`, { method: "POST" });
     await loadOntology(selectedSpaceId);
   }
 
   const visibleItems = React.useMemo(() => {
     if (!isCrudSection(active)) return [];
-    const items = data[active];
+    const items = sectionItemsData(data, active);
     if (!keyword) return items;
     return items.filter((item) => `${item.name}${item.code}${item.description}`.includes(keyword));
   }, [active, data, keyword]);
@@ -395,13 +422,15 @@ function App() {
           <OntologyGraph data={data} />
         ) : active === "traverse" ? (
           <GraphTraversalPanel spaceId={selectedSpaceId} data={data} />
+        ) : active === "validation" ? (
+          <ValidationPanel spaceId={selectedSpaceId} onPublished={() => loadOntology(selectedSpaceId)} />
         ) : active === "versions" ? (
           <VersionTable versions={data.versions} loading={loading} />
         ) : active === "settings" ? (
           <SettingsPanel space={selectedSpace} />
         ) : isCrudSection(active) ? (
           <ResourcePanel
-            title={resourceTitle[active]}
+            title={resourceTitle[sectionResource(active)]}
             items={visibleItems}
             keyword={keyword}
             loading={loading}
@@ -426,13 +455,14 @@ function App() {
             setEditing(selected);
             setSelected(null);
           }}
+          onReload={() => loadOntology(selectedSpaceId)}
         />
       )}
 
       {editing && isCrudSection(active) && (
         <EditDrawer
           item={editing === "new" ? null : editing}
-          resource={active}
+          resource={sectionResource(active)}
           onClose={() => setEditing(null)}
           onSave={saveElement}
         />
@@ -562,15 +592,17 @@ function Overview({
         <div className="metric-strip">
           <Metric label="对象" value={summary.by_type.object ?? data.objects.length} />
           <Metric label="关系" value={summary.by_type.relation ?? data.relations.length} />
+          <Metric label="函数" value={summary.by_type.function ?? data.functions.length} />
           <Metric label="行为" value={summary.by_type.action ?? data.actions.length} />
-          <Metric label="规则" value={summary.by_type.rule ?? data.rules.length} />
         </div>
       </div>
       <div className="shortcut-grid">
-        <Shortcut icon={Boxes} label="对象" value="实体类型与对象字段" onClick={() => onJump("objects")} />
+        <Shortcut icon={Boxes} label="对象" value="对象及其属性" onClick={() => onJump("objects")} />
         <Shortcut icon={GitBranch} label="关系" value="对象之间的业务连接" onClick={() => onJump("relations")} />
-        <Shortcut icon={WandSparkles} label="行为" value="命中规则后的动作模板" onClick={() => onJump("actions")} />
-        <Shortcut icon={Network} label="本体图谱" value="对象、属性、关系、行为、规则全景" onClick={() => onJump("graph")} />
+        <Shortcut icon={ListChecks} label="函数与指标" value="业务计算口径" onClick={() => onJump("functions")} />
+        <Shortcut icon={WandSparkles} label="行为与规则" value="动作模板与触发规则" onClick={() => onJump("actions")} />
+        <Shortcut icon={PlayCircle} label="查询能力" value="封装给智脑调用" onClick={() => onJump("queries")} />
+        <Shortcut icon={Network} label="本体图谱" value="对象关系图谱" onClick={() => onJump("graph")} />
       </div>
     </section>
   );
@@ -706,13 +738,15 @@ function DetailDrawer({
   ontologyData,
   spaceId,
   onClose,
-  onEdit
+  onEdit,
+  onReload
 }: {
   item: ElementItem;
   ontologyData: OntologyData;
   spaceId: string;
   onClose: () => void;
   onEdit: () => void;
+  onReload: () => void;
 }) {
   const [impact, setImpact] = React.useState<Record<string, unknown> | null>(null);
   const resource = resourcePath(item.resource_type);
@@ -727,7 +761,7 @@ function DetailDrawer({
   const objectProperties = ontologyData.properties.filter((property) => property.payload.object_code === item.code);
   const actionRules = ontologyData.rules.filter((rule) => {
     const actions = rule.payload.actions;
-    return Array.isArray(actions) && actions.includes(item.code);
+    return rule.payload.action_code === item.code || (Array.isArray(actions) && actions.includes(item.code));
   });
 
   return (
@@ -755,25 +789,22 @@ function DetailDrawer({
       </Section>
       {item.resource_type === "object" && (
         <Section title="对象属性">
-          <MiniTable
-            rows={objectProperties.map((property) => ({
-              name: property.name,
-              code: property.code,
-              desc: String(property.payload.data_type ?? "")
-            }))}
-            empty="暂无属性"
+          <ObjectPropertyManager
+            spaceId={spaceId}
+            objectItem={item}
+            properties={objectProperties}
+            functions={ontologyData.functions}
+            onReload={onReload}
           />
         </Section>
       )}
       {item.resource_type === "action" && (
         <Section title="关联规则">
-          <MiniTable
-            rows={actionRules.map((rule) => ({
-              name: rule.name,
-              code: rule.code,
-              desc: `${rule.payload.rule_type ?? ""} ${rule.payload.condition ?? ""}`
-            }))}
-            empty="暂无规则"
+          <ActionRuleManager
+            spaceId={spaceId}
+            actionItem={item}
+            rules={actionRules}
+            onReload={onReload}
           />
         </Section>
       )}
@@ -869,6 +900,371 @@ function ImpactView({ impact }: { impact: Record<string, unknown> | null }) {
   );
 }
 
+function ObjectPropertyManager({
+  spaceId,
+  objectItem,
+  properties,
+  functions,
+  onReload
+}: {
+  spaceId: string;
+  objectItem: ElementItem;
+  properties: ElementItem[];
+  functions: ElementItem[];
+  onReload: () => void;
+}) {
+  const [editing, setEditing] = React.useState<ElementItem | "new" | null>(null);
+
+  async function saveProperty(value: PropertyFormValue) {
+    const payload: Record<string, unknown> = {
+      data_type: value.dataType,
+      display_name: value.displayName,
+      required: value.required
+    };
+    if (value.functionId) {
+      payload.calculation = { function_id: value.functionId };
+    }
+    const body = {
+      code: value.code,
+      name: value.name,
+      description: value.description,
+      status: value.status,
+      payload
+    };
+    if (editing === "new") {
+      await api(`/api/ontology/${spaceId}/objects/${objectItem.id}/properties`, {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+    } else if (editing) {
+      await api(`/api/ontology/${spaceId}/properties/${editing.id}`, {
+        method: "PUT",
+        body: JSON.stringify(body)
+      });
+    }
+    setEditing(null);
+    onReload();
+  }
+
+  async function deactivateProperty(property: ElementItem) {
+    await api(`/api/ontology/${spaceId}/properties/${property.id}/deactivate`, { method: "POST" });
+    onReload();
+  }
+
+  return (
+    <div className="inline-manager">
+      <div className="inline-manager-toolbar">
+        <span>{properties.length} 个属性</span>
+        <button className="ghost-button" onClick={() => setEditing("new")}>
+          <Plus size={15} />
+          新增属性
+        </button>
+      </div>
+      {properties.length === 0 ? (
+        <p className="muted">暂无属性</p>
+      ) : (
+        <div className="mini-table actionable">
+          {properties.map((property) => (
+            <div key={property.id}>
+              <strong>{propertyDisplayName(property)}</strong>
+              <code>{propertyDataTypeLabel(property.payload.data_type)}</code>
+              <span>{propertyDescription(property)}</span>
+              <div className="mini-row-actions">
+                <button title="编辑属性" onClick={() => setEditing(property)}>
+                  <Edit3 size={14} />
+                </button>
+                <button title="停用属性" onClick={() => deactivateProperty(property)}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {editing && (
+        <PropertyInlineForm
+          item={editing === "new" ? null : editing}
+          objectCode={objectItem.code}
+          functions={functions}
+          onCancel={() => setEditing(null)}
+          onSave={saveProperty}
+        />
+      )}
+    </div>
+  );
+}
+
+type PropertyFormValue = {
+  code: string;
+  name: string;
+  displayName: string;
+  description: string;
+  status: string;
+  dataType: string;
+  required: boolean;
+  functionId: string;
+};
+
+function PropertyInlineForm({
+  item,
+  objectCode,
+  functions,
+  onCancel,
+  onSave
+}: {
+  item: ElementItem | null;
+  objectCode: string;
+  functions: ElementItem[];
+  onCancel: () => void;
+  onSave: (value: PropertyFormValue) => void;
+}) {
+  const fieldName = item?.code.split(".").pop() ?? "";
+  const calculation = item?.payload.calculation as { function_id?: string } | undefined;
+  const [form, setForm] = React.useState<PropertyFormValue>({
+    code: item?.code ?? `${objectCode}.${fieldName || "new_field"}`,
+    name: item?.name ?? "",
+    displayName: String(item?.payload.display_name ?? item?.name ?? ""),
+    description: item?.description ?? "",
+    status: item?.status ?? "draft",
+    dataType: String(item?.payload.data_type ?? "string"),
+    required: Boolean(item?.payload.required ?? false),
+    functionId: calculation?.function_id ?? ""
+  });
+
+  function patch(value: Partial<PropertyFormValue>) {
+    setForm((current) => ({ ...current, ...value }));
+  }
+
+  return (
+    <div className="inline-form">
+      <label>
+        属性名称
+        <input value={form.name} onChange={(event) => patch({ name: event.target.value })} />
+      </label>
+      <label>
+        中文展示
+        <input value={form.displayName} onChange={(event) => patch({ displayName: event.target.value })} />
+      </label>
+      <label>
+        编码
+        <input value={form.code} onChange={(event) => patch({ code: event.target.value })} />
+      </label>
+      <label>
+        类型
+        <select value={form.dataType} onChange={(event) => patch({ dataType: event.target.value })}>
+          <option value="string">文本</option>
+          <option value="number">数字</option>
+          <option value="money">金额</option>
+          <option value="date">日期</option>
+          <option value="bool">布尔</option>
+          <option value="enum">枚举</option>
+        </select>
+      </label>
+      <label>
+        计算函数
+        <select value={form.functionId} onChange={(event) => patch({ functionId: event.target.value })}>
+          <option value="">不绑定</option>
+          {functions.map((fn) => (
+            <option key={fn.id} value={fn.id}>
+              {fn.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={form.required}
+          onChange={(event) => patch({ required: event.target.checked })}
+        />
+        必填
+      </label>
+      <label>
+        口径说明
+        <textarea value={form.description} onChange={(event) => patch({ description: event.target.value })} />
+      </label>
+      <div className="inline-form-actions">
+        <button className="ghost-button" onClick={onCancel}>取消</button>
+        <button className="primary-button" onClick={() => onSave(form)}>保存属性</button>
+      </div>
+    </div>
+  );
+}
+
+function ActionRuleManager({
+  spaceId,
+  actionItem,
+  rules,
+  onReload
+}: {
+  spaceId: string;
+  actionItem: ElementItem;
+  rules: ElementItem[];
+  onReload: () => void;
+}) {
+  const [editing, setEditing] = React.useState<ElementItem | "new" | null>(null);
+
+  async function saveRule(value: RuleFormValue) {
+    const body = {
+      code: value.code,
+      name: value.name,
+      description: value.description,
+      status: value.status,
+      payload: {
+        action_code: actionItem.code,
+        actions: [actionItem.code],
+        rule_type: value.ruleType,
+        condition: value.condition,
+        result: value.result,
+        severity: value.severity
+      }
+    };
+    if (editing === "new") {
+      await api(`/api/ontology/${spaceId}/actions/${actionItem.id}/rules`, {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+    } else if (editing) {
+      await api(`/api/ontology/${spaceId}/rules/${editing.id}`, {
+        method: "PUT",
+        body: JSON.stringify(body)
+      });
+    }
+    setEditing(null);
+    onReload();
+  }
+
+  async function deactivateRule(rule: ElementItem) {
+    await api(`/api/ontology/${spaceId}/rules/${rule.id}/deactivate`, { method: "POST" });
+    onReload();
+  }
+
+  return (
+    <div className="inline-manager">
+      <div className="inline-manager-toolbar">
+        <span>{rules.length} 条规则</span>
+        <button className="ghost-button" onClick={() => setEditing("new")}>
+          <Plus size={15} />
+          新增规则
+        </button>
+      </div>
+      {rules.length === 0 ? (
+        <p className="muted">暂无规则</p>
+      ) : (
+        <div className="mini-table actionable">
+          {rules.map((rule) => (
+            <div key={rule.id}>
+              <strong>{rule.name}</strong>
+              <code>{String(rule.payload.rule_type ?? "规则")}</code>
+              <span>{String(rule.payload.condition ?? rule.description ?? "-")}</span>
+              <div className="mini-row-actions">
+                <button title="编辑规则" onClick={() => setEditing(rule)}>
+                  <Edit3 size={14} />
+                </button>
+                <button title="停用规则" onClick={() => deactivateRule(rule)}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {editing && (
+        <RuleInlineForm
+          item={editing === "new" ? null : editing}
+          actionCode={actionItem.code}
+          onCancel={() => setEditing(null)}
+          onSave={saveRule}
+        />
+      )}
+    </div>
+  );
+}
+
+type RuleFormValue = {
+  code: string;
+  name: string;
+  description: string;
+  status: string;
+  ruleType: string;
+  condition: string;
+  result: string;
+  severity: string;
+};
+
+function RuleInlineForm({
+  item,
+  actionCode,
+  onCancel,
+  onSave
+}: {
+  item: ElementItem | null;
+  actionCode: string;
+  onCancel: () => void;
+  onSave: (value: RuleFormValue) => void;
+}) {
+  const [form, setForm] = React.useState<RuleFormValue>({
+    code: item?.code ?? `${actionCode}.rule`,
+    name: item?.name ?? "",
+    description: item?.description ?? "",
+    status: item?.status ?? "draft",
+    ruleType: String(item?.payload.rule_type ?? "硬规则"),
+    condition: String(item?.payload.condition ?? ""),
+    result: String(item?.payload.result ?? ""),
+    severity: String(item?.payload.severity ?? "medium")
+  });
+
+  function patch(value: Partial<RuleFormValue>) {
+    setForm((current) => ({ ...current, ...value }));
+  }
+
+  return (
+    <div className="inline-form">
+      <label>
+        规则名称
+        <input value={form.name} onChange={(event) => patch({ name: event.target.value })} />
+      </label>
+      <label>
+        编码
+        <input value={form.code} onChange={(event) => patch({ code: event.target.value })} />
+      </label>
+      <label>
+        类型
+        <select value={form.ruleType} onChange={(event) => patch({ ruleType: event.target.value })}>
+          <option value="硬规则">硬规则</option>
+          <option value="软规则">软规则</option>
+          <option value="约束">约束</option>
+        </select>
+      </label>
+      <label>
+        严重级别
+        <select value={form.severity} onChange={(event) => patch({ severity: event.target.value })}>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+          <option value="critical">严重</option>
+        </select>
+      </label>
+      <label>
+        触发条件
+        <textarea value={form.condition} onChange={(event) => patch({ condition: event.target.value })} />
+      </label>
+      <label>
+        输出结果
+        <textarea value={form.result} onChange={(event) => patch({ result: event.target.value })} />
+      </label>
+      <label>
+        说明
+        <textarea value={form.description} onChange={(event) => patch({ description: event.target.value })} />
+      </label>
+      <div className="inline-form-actions">
+        <button className="ghost-button" onClick={onCancel}>取消</button>
+        <button className="primary-button" onClick={() => onSave(form)}>保存规则</button>
+      </div>
+    </div>
+  );
+}
+
 function EditDrawer({
   item,
   resource,
@@ -876,7 +1272,7 @@ function EditDrawer({
   onSave
 }: {
   item: ElementItem | null;
-  resource: "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules";
+  resource: CrudResource;
   onClose: () => void;
   onSave: (value: ElementFormValue) => void;
 }) {
@@ -1126,8 +1522,9 @@ function GraphTraversalPanel({ spaceId, data }: { spaceId: string; data: Ontolog
         ...data.properties,
         ...data.relations,
         ...data.actions,
-        ...data.scenarios,
         ...data.rules,
+        ...data.functions,
+        ...data.queryCapabilities,
       ].filter((item) => item.status !== "inactive"),
     [data]
   );
@@ -1142,7 +1539,7 @@ function GraphTraversalPanel({ spaceId, data }: { spaceId: string; data: Ontolog
   const [result, setResult] = React.useState<TraverseResult | null>(null);
   const [error, setError] = React.useState("");
 
-  const nodeTypeOptions = ["object", "property", "relation", "action", "scenario", "rule"];
+  const nodeTypeOptions = ["object", "property", "relation", "action", "rule", "function", "query_capability"];
 
   function execute() {
     if (!startNodeId) {
@@ -1671,6 +2068,91 @@ function findRulesForRelation(relation: ElementItem, rules: ElementItem[]) {
   });
 }
 
+type ValidationResult = {
+  space_id: string;
+  passed: boolean;
+  checks: Array<{ code: string; name: string; passed: boolean }>;
+};
+
+function ValidationPanel({ spaceId, onPublished }: { spaceId: string; onPublished: () => void }) {
+  const [validation, setValidation] = React.useState<ValidationResult | null>(null);
+  const [packageInfo, setPackageInfo] = React.useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  async function runValidation() {
+    setLoading(true);
+    setError("");
+    setPackageInfo(null);
+    try {
+      const result = await api<ValidationResult>(`/api/ontology/${spaceId}/validation/run`, { method: "POST" });
+      setValidation(result.data);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function publish() {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await api<Record<string, unknown>>(`/api/ontology/${spaceId}/publish`, { method: "POST" });
+      setPackageInfo(result.data);
+      onPublished();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="resource-panel validation-panel">
+      <div className="workspace-band">
+        <div>
+          <p className="eyebrow">发布门禁</p>
+          <h2>验证与发布</h2>
+          <p>发布前会检查对象、关系、行为，以及函数或查询能力是否具备，避免智脑拿到不可用的本体包。</p>
+        </div>
+        <div className="toolbar-actions">
+          <button className="ghost-button" onClick={runValidation} disabled={loading}>
+            <RefreshCw size={16} />
+            运行验证
+          </button>
+          <button className="primary-button" onClick={publish} disabled={loading || validation?.passed !== true}>
+            <PackageCheck size={16} />
+            发布本体
+          </button>
+        </div>
+      </div>
+      {error && <p className="form-error">{error}</p>}
+      {validation ? (
+        <div className="validation-grid">
+          {validation.checks.map((check) => (
+            <div key={check.code} className={check.passed ? "validation-card passed" : "validation-card failed"}>
+              <strong>{check.passed ? "通过" : "未通过"}</strong>
+              <span>{check.name}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="ontology-empty">
+          <p>还没有运行验证</p>
+        </div>
+      )}
+      {packageInfo && (
+        <Section title="发布结果">
+          <KeyValue label="发布包" value={String(packageInfo.package_id ?? "-")} />
+          <KeyValue label="对象数量" value={String((packageInfo.objects as unknown[] | undefined)?.length ?? 0)} />
+          <KeyValue label="查询能力" value={String((packageInfo.query_capabilities as unknown[] | undefined)?.length ?? 0)} />
+        </Section>
+      )}
+    </section>
+  );
+}
+
 function splitIdentifier(value: string) {
   return value
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -1740,8 +2222,22 @@ function KeyValue({ label, value }: { label: string; value: string }) {
   );
 }
 
-function isCrudSection(value: SectionKey): value is "objects" | "properties" | "relations" | "actions" | "scenarios" | "rules" {
-  return value === "objects" || value === "properties" || value === "relations" || value === "actions" || value === "scenarios" || value === "rules";
+function isCrudSection(value: SectionKey): value is "objects" | "relations" | "functions" | "actions" | "queries" {
+  return value === "objects" || value === "relations" || value === "functions" || value === "actions" || value === "queries";
+}
+
+function sectionResource(value: "objects" | "relations" | "functions" | "actions" | "queries"): CrudResource {
+  if (value === "queries") return "query-capabilities";
+  return value;
+}
+
+function sectionItemsData(data: OntologyData, value: SectionKey): ElementItem[] {
+  if (value === "objects") return data.objects;
+  if (value === "relations") return data.relations;
+  if (value === "functions") return data.functions;
+  if (value === "actions") return data.actions;
+  if (value === "queries") return data.queryCapabilities;
+  return [];
 }
 
 function resourcePath(type: string) {
@@ -1750,8 +2246,10 @@ function resourcePath(type: string) {
     property: "properties",
     relation: "relations",
     action: "actions",
-    scenario: "scenarios",
-    rule: "rules"
+    rule: "rules",
+    function: "functions",
+    query_capability: "query-capabilities",
+    validation_case: "validation-cases"
   };
   return map[type] ?? "";
 }
@@ -1762,8 +2260,10 @@ function resourceTypeLabel(type: string) {
     property: "属性",
     relation: "关系",
     action: "行为",
-    scenario: "场景",
-    rule: "规则"
+    rule: "规则",
+    function: "函数",
+    query_capability: "查询能力",
+    validation_case: "验证用例"
   };
   return map[type] ?? type;
 }

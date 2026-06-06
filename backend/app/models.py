@@ -20,6 +20,9 @@ class ElementType(StrEnum):
     action = "action"
     scenario = "scenario"
     rule = "rule"
+    function = "function"
+    query_capability = "query_capability"
+    validation_case = "validation_case"
     setting = "setting"
 
 
@@ -40,6 +43,12 @@ class EdgeType(StrEnum):
     references_property = "REFERENCES_PROPERTY"
     references_relation = "REFERENCES_RELATION"
     references_action = "REFERENCES_ACTION"
+    computed_by = "COMPUTED_BY"
+    function_uses = "FUNCTION_USES"
+    action_has_rule = "ACTION_HAS_RULE"
+    rule_references = "RULE_REFERENCES"
+    query_references = "QUERY_REFERENCES"
+    validates = "VALIDATES"
     activates_object = "ACTIVATES_OBJECT"
     activates_relation = "ACTIVATES_RELATION"
     activates_action = "ACTIVATES_ACTION"
